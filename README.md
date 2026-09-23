@@ -1,6 +1,5 @@
 # Privacy-Preserving Clinical Scribe and Diagnostic Copilot
 
-Group 21 · Computer Engineering · VIT · AY 2026–27
 
 A fully local pipeline that turns a recorded doctor-patient consultation into
 a structured, evidence-cited SOAP note and a safety-checked draft
