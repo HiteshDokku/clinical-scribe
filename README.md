@@ -57,16 +57,6 @@ Full threat model and controls: `docs/architecture.md §8`.
 | `eval/` | The metrics harness — this is a first-class part of the project, not an afterthought |
 | `docs/decisions/` | ADRs — read these before changing architecture |
 
-## Team
-
-| Area | Owner |
-|---|---|
-| Gateway, contracts, CI | Krishna Patil |
-| ASR, audio client, Hinglish work | Sudesh Gawade |
-| LLM service, prompts, eval harness | Imran Kotwal |
-| Safety service, FHIR gateway, security tests | Hitesh Dokku |
-
-Guide: Prof. Amruta Vikas Patil
 
 ## Status
 
