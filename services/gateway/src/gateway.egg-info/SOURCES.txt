@@ -1,0 +1,8 @@
+pyproject.toml
+src/__init__.py
+src/main.py
+src/gateway.egg-info/PKG-INFO
+src/gateway.egg-info/SOURCES.txt
+src/gateway.egg-info/dependency_links.txt
+src/gateway.egg-info/requires.txt
+src/gateway.egg-info/top_level.txt

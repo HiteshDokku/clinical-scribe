@@ -1,0 +1,114 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "SoapNote",
+  "type": "object",
+  "required": ["encounter_id", "model", "generated_at", "sections", "grounding"],
+  "properties": {
+    "encounter_id": { "type": "string" },
+    "model": {
+      "type": "object",
+      "required": ["name", "quant", "prompt_version"],
+      "properties": {
+        "name": { "const": "llama-3-8b-instruct" },
+        "quant": { "type": "string" },
+        "prompt_version": { "type": "string" }
+      }
+    },
+    "generated_at": { "type": "string", "format": "date-time" },
+    "sections": {
+      "type": "object",
+      "required": ["subjective", "objective", "assessment", "plan"],
+      "properties": {
+        "subjective": { "$ref": "#/$defs/statementList" },
+        "objective":  { "$ref": "#/$defs/statementList" },
+        "assessment": { "$ref": "#/$defs/statementList" },
+        "plan":       { "$ref": "#/$defs/statementList" }
+      }
+    },
+    "medications": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "verbatim", "evidence", "flags"],
+        "properties": {
+          "id": { "type": "string" },
+          "verbatim": { "type": "string" },
+          "ingredient_id": {
+            "type": ["string", "null"],
+            "description": "FK into the local ingredient_dictionary table. Null if unresolved."
+          },
+          "match_confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+          "needs_manual_confirmation": { "type": "boolean", "default": false },
+          "dose": {
+            "type": "object",
+            "properties": {
+              "value": { "type": "number" },
+              "unit": { "type": "string" }
+            }
+          },
+          "frequency": { "type": "string" },
+          "route": { "type": "string" },
+          "duration_days": { "type": "integer" },
+          "evidence": { "type": "array", "items": { "type": "string" }, "minItems": 1 },
+          "flags": { "type": "array", "items": { "$ref": "#/$defs/safetyFlag" } }
+        }
+      }
+    },
+    "differential_considerations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["label", "trigger_spans", "rationale"],
+        "properties": {
+          "label": { "type": "string" },
+          "trigger_spans": { "type": "array", "items": { "type": "string" }, "minItems": 1 },
+          "rationale": { "type": "string" }
+        }
+      }
+    },
+    "safety_flags": { "type": "array", "items": { "$ref": "#/$defs/safetyFlag" } },
+    "grounding": {
+      "type": "object",
+      "required": ["statements_total", "ungrounded", "ungrounded_ids"],
+      "properties": {
+        "statements_total": { "type": "integer" },
+        "ungrounded": { "type": "integer" },
+        "ungrounded_ids": { "type": "array", "items": { "type": "string" } }
+      }
+    }
+  },
+  "$defs": {
+    "statementList": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "text", "evidence"],
+        "properties": {
+          "id": { "type": "string" },
+          "text": { "type": "string" },
+          "evidence": {
+            "type": "array",
+            "items": { "type": "string" },
+            "minItems": 1,
+            "description": "Non-empty by design — a statement with no cited transcript span cannot exist. This is the schema-level enforcement of 'no hallucinated claims.'"
+          },
+          "confidence": { "type": "number", "minimum": 0, "maximum": 1 }
+        }
+      }
+    },
+    "safetyFlag": {
+      "type": "object",
+      "required": ["severity", "type", "source_ref", "message"],
+      "properties": {
+        "severity": { "enum": ["low", "moderate", "high"] },
+        "type": { "enum": ["interaction", "dose_range", "unresolved_medication"] },
+        "pair": { "type": "array", "items": { "type": "string" } },
+        "source_ref": {
+          "type": "string",
+          "description": "Mandatory citation, e.g. 'ONC-HighPriority#412' or 'DDInter2#88014'. Never null — an interaction flag with no source is not permitted."
+        },
+        "message": { "type": "string" }
+      }
+    }
+  }
+}

@@ -1,0 +1,7 @@
+input_a,input_b,expected_severity
+Atorva,Amiodarone,Major
+Ecosprin,Warfarin,Major
+Crocin,Warfarin,Moderate
+Pan,Clopidogrel,Moderate
+UnknownHerb,Aspirin,Unknown
+Lipitor,Amiodarone,Major

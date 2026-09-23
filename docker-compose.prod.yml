@@ -1,0 +1,36 @@
+# Production overlay: apply with
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up
+#
+# Tightens resource limits and locks the ASR container's scratch space so it
+# cannot write or execute anything, closing the "just for debugging" loophole
+# where an agent (or a developer) writes a temp file that shouldn't exist.
+
+services:
+  asr:
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,noexec
+
+  llm:
+    deploy:
+      resources:
+        limits:
+          memory: 20G
+
+  fhir-gateway:
+    networks: [clinic, edge]
+    # In prod, the edge network's egress is further restricted at the host
+    # firewall (infra/firewall/) to exactly FHIR_ALLOWLIST_HOST:PORT.
+    # See docs/decisions/0001-egress-policy.md.
+
+  gateway:
+    environment:
+      - REDACT_CLINICAL_TEXT_IN_LOGS=true
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"

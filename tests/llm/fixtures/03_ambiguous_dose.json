@@ -1,0 +1,24 @@
+{
+  "encounter_id": "enc_03",
+  "_human_reviewed": true,
+  "segments": [
+    {
+      "id": "seg_1",
+      "start_ms": 0,
+      "end_ms": 3000,
+      "text": "Patient says they are taking amoxicillin."
+    },
+    {
+      "id": "seg_2",
+      "start_ms": 3000,
+      "end_ms": 6000,
+      "text": "They don't remember the dose, just taking one pill twice a day."
+    },
+    {
+      "id": "seg_3",
+      "start_ms": 6000,
+      "end_ms": 9000,
+      "text": "Will hold on refilling until we check their records."
+    }
+  ]
+}

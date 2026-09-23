@@ -1,0 +1,13 @@
+You are an expert clinical scribe. Compose a final SOAP note strictly using the following extracted clinical entities.
+
+Extracted Entities:
+{% for entity in entities %}
+- {{ entity.category }}: {{ entity.verbatim }} {% if entity.details %}(Details: {{ entity.details }}){% endif %} [Evidence: {{ entity.evidence_span_ids | join(', ') }}]
+{% endfor %}
+
+Construct the JSON output conforming precisely to the requested SoapNote schema.
+- Map the entities to the appropriate sections (subjective, objective, assessment, plan).
+- Explicitly denied symptoms must be included (usually in subjective) but clearly stated as denied, citing the exact evidence spans.
+- Populate the `medications` list accurately. If a dose is ambiguous or missing, do NOT hallucinate it. Leave the dose value null or flag `needs_manual_confirmation`.
+- Ensure every statement includes the `evidence` field populated with the span IDs.
+- Ensure no hallucination. Every statement must have at least one valid evidence span ID from the provided list.

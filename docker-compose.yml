@@ -1,0 +1,172 @@
+name: clinical-scribe
+
+networks:
+  clinic:
+    internal: true          # <-- the single line that makes egress-denied true
+  edge:
+    internal: false         # only the fhir-gateway and web/gateway touch this
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    networks: [clinic]
+    environment:
+      # POSTGRES_USER / POSTGRES_PASSWORD are used by the postgres image to create
+      # the superuser admin account and the initial database.  We use 'postgres'
+      # as the superuser here so that Alembic migrations run as a non-scribe_app
+      # owner — making GRANT/REVOKE on audit_log meaningful for the app role.
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_SUPERUSER_PASSWORD:-postgres_admin_secret}
+      POSTGRES_DB: clinical_scribe
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./infra/db/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d clinical_scribe"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    networks: [clinic]
+    command: ["redis-server", "--save", "", "--appendonly", "no"]  # no persistence
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  asr:
+    build:
+      context: .
+      dockerfile: services/asr/Dockerfile
+    networks: [clinic]
+    environment:
+      - WHISPER_MODEL=${WHISPER_MODEL}
+      - ASR_MAX_BUFFER_SECONDS=${ASR_MAX_BUFFER_SECONDS}
+    # NOTE: GPU device reservation removed for scaffold — model loading added at M2.
+    # To re-enable GPU in prod, add:
+    #   deploy:
+    #     resources:
+    #       reservations:
+    #         devices:
+    #           - driver: nvidia
+    #             count: 1
+    #             capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  llm:
+    build:
+      context: .
+      dockerfile: services/llm/Dockerfile
+    networks: [clinic]
+    environment:
+      - LLM_BACKEND=${LLM_BACKEND}
+      - LLM_MODEL_NAME=${LLM_MODEL_NAME}
+      - LLM_QUANT=${LLM_QUANT}
+    # NOTE: GPU device reservation removed for scaffold — model loading added at M3.
+    # To re-enable GPU in prod, add:
+    #   deploy:
+    #     resources:
+    #       reservations:
+    #         devices:
+    #           - driver: nvidia
+    #             count: 1
+    #             capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  safety:
+    build:
+      context: .
+      dockerfile: services/safety/Dockerfile
+    networks: [clinic]
+    environment:
+      - DRUG_DICTIONARY_PATH=${DRUG_DICTIONARY_PATH}
+      - BRAND_MAP_PATH=${BRAND_MAP_PATH}
+      - FUZZY_MATCH_MIN_CONFIDENCE=${FUZZY_MATCH_MIN_CONFIDENCE}
+    volumes:
+      - ./eval/datasets/drugs:/data/drugs:ro
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8002/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  gateway:
+    build:
+      context: .
+      dockerfile: services/gateway/Dockerfile
+    networks: [clinic, edge]     # only gateway + fhir-gateway span both
+    ports:
+      - "${GATEWAY_PORT:-8000}:8000"
+    environment:
+      - POSTGRES_HOST=${POSTGRES_HOST}
+      - POSTGRES_PORT=${POSTGRES_PORT}
+      - POSTGRES_DB=${POSTGRES_DB}
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - REDIS_HOST=${REDIS_HOST}
+      - TRANSCRIPT_TTL_SECONDS=${TRANSCRIPT_TTL_SECONDS}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      asr:
+        condition: service_healthy
+      llm:
+        condition: service_healthy
+      safety:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  fhir-gateway:
+    build:
+      context: .
+      dockerfile: services/fhir-gateway/Dockerfile
+    networks: [clinic, edge]
+    environment:
+      - FHIR_ALLOWLIST_HOST=${FHIR_ALLOWLIST_HOST}
+      - FHIR_ALLOWLIST_PORT=${FHIR_ALLOWLIST_PORT}
+      # Cert paths are env-controlled for scaffold; inject real certs via CI secrets in prod.
+      - FHIR_MTLS_CERT_PATH=${FHIR_MTLS_CERT_PATH:-}
+      - FHIR_MTLS_KEY_PATH=${FHIR_MTLS_KEY_PATH:-}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8003/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    networks: [edge]
+    ports:
+      - "${WEB_PORT:-5173}:80"
+    depends_on:
+      gateway:
+        condition: service_healthy
+
+volumes:
+  pgdata:

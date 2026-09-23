@@ -1,0 +1,38 @@
+# Secrets and local env
+.env
+infra/secrets/*.pem
+infra/secrets/*.key
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Node / web
+node_modules/
+apps/web/dist/
+apps/web/.vite/
+
+# Data — never commit patient-adjacent or large media data
+eval/datasets/**/*.wav
+eval/datasets/**/*.mp3
+eval/datasets/**/*.flac
+*.db
+*.sqlite3
+
+# Model weights — too large for git, fetched by scripts/download-models.sh
+services/llm/weights/
+services/asr/weights/
+
+# OS / editor
+.DS_Store
+.vscode/
+.idea/
+
+# Build artifacts
+eval/reports/*/*.csv
+eval/reports/*/*.md
+!eval/reports/.gitkeep

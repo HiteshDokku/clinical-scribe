@@ -1,0 +1,5 @@
+ingredient_name,qt_risk,source
+Amiodarone,Known Risk,CredibleMeds
+Azithromycin,Known Risk,CredibleMeds
+Ciprofloxacin,Possible Risk,CredibleMeds
+Pantoprazole,Conditional Risk,CredibleMeds

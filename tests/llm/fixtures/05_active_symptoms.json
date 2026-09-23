@@ -1,0 +1,24 @@
+{
+  "encounter_id": "enc_05",
+  "_human_reviewed": true,
+  "segments": [
+    {
+      "id": "seg_1",
+      "start_ms": 0,
+      "end_ms": 3000,
+      "text": "Chief complaint is severe lower back pain."
+    },
+    {
+      "id": "seg_2",
+      "start_ms": 3000,
+      "end_ms": 6000,
+      "text": "Started 3 days ago after lifting heavy boxes."
+    },
+    {
+      "id": "seg_3",
+      "start_ms": 6000,
+      "end_ms": 9000,
+      "text": "Radiates down the left leg."
+    }
+  ]
+}

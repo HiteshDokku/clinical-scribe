@@ -1,0 +1,176 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
+  }
+
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    scroll-behavior: smooth;
+  }
+
+  body {
+    margin: 0;
+    min-height: 100vh;
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    background: linear-gradient(135deg, #0a0e1a 0%, #111827 50%, #0f172a 100%);
+    color: #e2e8f0;
+  }
+
+  /* Custom scrollbar */
+  ::-webkit-scrollbar {
+    width: 6px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: rgba(148, 163, 184, 0.2);
+    border-radius: 3px;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: rgba(148, 163, 184, 0.35);
+  }
+}
+
+@layer components {
+  /* Glassmorphism card */
+  .glass-card {
+    @apply rounded-2xl border border-white/[0.06] bg-white/[0.03] shadow-glass backdrop-blur-md;
+    box-shadow:
+      0 8px 32px rgba(0, 0, 0, 0.16),
+      inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  }
+
+  .glass-card-elevated {
+    @apply glass-card bg-white/[0.05] border-white/[0.08];
+    box-shadow:
+      0 16px 48px rgba(0, 0, 0, 0.24),
+      inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  }
+
+  /* Section headers */
+  .section-label {
+    @apply text-xs font-semibold uppercase tracking-[0.15em] text-clinical-400;
+  }
+
+  /* Status badges */
+  .badge {
+    @apply inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium;
+  }
+
+  .badge-ai {
+    @apply badge bg-clinical-600/20 text-clinical-300 border border-clinical-500/20;
+  }
+
+  .badge-warning {
+    @apply badge bg-safety-flag-amber/15 text-safety-flag-amber border border-safety-flag-amber/25;
+  }
+
+  .badge-danger {
+    @apply badge bg-safety-flag-red/15 text-safety-flag-red border border-safety-flag-red/25;
+  }
+
+  .badge-success {
+    @apply badge bg-safety-success/15 text-safety-success border border-safety-success/25;
+  }
+
+  /* Buttons */
+  .btn-primary {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl px-5 py-2.5 text-sm font-semibold
+           bg-gradient-to-r from-clinical-600 to-clinical-700 text-white
+           shadow-lg shadow-clinical-700/25
+           hover:from-clinical-500 hover:to-clinical-600
+           active:scale-[0.98]
+           transition-all duration-200;
+  }
+
+  .btn-primary:disabled {
+    @apply opacity-40 cursor-not-allowed shadow-none from-gray-600 to-gray-700 hover:from-gray-600 hover:to-gray-700 active:scale-100;
+  }
+
+  .btn-secondary {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl px-5 py-2.5 text-sm font-semibold
+           bg-white/[0.06] text-gray-200 border border-white/[0.1]
+           hover:bg-white/[0.1] hover:border-white/[0.15]
+           active:scale-[0.98]
+           transition-all duration-200;
+  }
+
+  .btn-danger {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl px-5 py-2.5 text-sm font-semibold
+           bg-gradient-to-r from-red-600 to-red-700 text-white
+           shadow-lg shadow-red-700/25
+           hover:from-red-500 hover:to-red-600
+           active:scale-[0.98]
+           transition-all duration-200;
+  }
+
+  .btn-ghost {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg px-3 py-1.5 text-sm font-medium
+           text-gray-400 hover:text-gray-200 hover:bg-white/[0.06]
+           active:scale-[0.98]
+           transition-all duration-150;
+  }
+
+  /* Recording indicator */
+  .recording-dot {
+    @apply w-3 h-3 rounded-full bg-red-500 animate-pulse-recording;
+    box-shadow: 0 0 12px rgba(239, 68, 68, 0.5);
+  }
+
+  /* Waveform bars */
+  .waveform-bar {
+    @apply w-[3px] rounded-full bg-clinical-400 animate-waveform;
+  }
+
+  /* Ungrounded statement styling */
+  .statement-ungrounded {
+    @apply border-l-4 border-safety-ungrounded bg-safety-ungrounded/[0.06];
+  }
+
+  /* Safety flag inline styling */
+  .safety-flag-inline {
+    @apply rounded-lg border-2 px-3 py-2;
+  }
+
+  .safety-flag-high {
+    @apply safety-flag-inline border-safety-flag-red/60 bg-safety-flag-red/[0.08];
+  }
+
+  .safety-flag-moderate {
+    @apply safety-flag-inline border-safety-flag-amber/60 bg-safety-flag-amber/[0.08];
+  }
+
+  .safety-flag-low {
+    @apply safety-flag-inline border-safety-flag-yellow/60 bg-safety-flag-yellow/[0.08];
+  }
+
+  /* Modal overlay */
+  .modal-overlay {
+    @apply fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm;
+  }
+
+  .modal-content {
+    @apply glass-card-elevated p-6 max-w-md w-full mx-4;
+  }
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+
+  .gradient-text {
+    @apply bg-gradient-to-r from-clinical-300 to-clinical-500 bg-clip-text text-transparent;
+  }
+}

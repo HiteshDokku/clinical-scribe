@@ -1,0 +1,24 @@
+{
+  "encounter_id": "enc_01",
+  "_human_reviewed": true,
+  "segments": [
+    {
+      "id": "seg_1",
+      "start_ms": 0,
+      "end_ms": 2000,
+      "text": "Patient comes in for a routine checkup."
+    },
+    {
+      "id": "seg_2",
+      "start_ms": 2000,
+      "end_ms": 4000,
+      "text": "Blood pressure is 120 over 80."
+    },
+    {
+      "id": "seg_3",
+      "start_ms": 4000,
+      "end_ms": 6000,
+      "text": "Will continue lisinopril 10mg daily."
+    }
+  ]
+}

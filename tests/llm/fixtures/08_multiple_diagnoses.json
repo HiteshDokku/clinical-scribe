@@ -1,0 +1,18 @@
+{
+  "encounter_id": "enc_08",
+  "_human_reviewed": true,
+  "segments": [
+    {
+      "id": "seg_1",
+      "start_ms": 0,
+      "end_ms": 4000,
+      "text": "Assessment includes type 2 diabetes mellitus, uncomplicated."
+    },
+    {
+      "id": "seg_2",
+      "start_ms": 4000,
+      "end_ms": 8000,
+      "text": "Also essential hypertension and mild osteoarthritis."
+    }
+  ]
+}
