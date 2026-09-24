@@ -86,6 +86,9 @@ async def generate_note(id: str, req: GenerateNoteReq, db: AsyncSession = Depend
     if enc.state not in [EncounterState.transcribing.value, EncounterState.recording.value]:
         raise HTTPException(status_code=400, detail=f"Cannot generate from state: {enc.state}")
         
+    if not req.segments:
+        raise HTTPException(status_code=400, detail="No transcript segments provided. Cannot generate SOAP note.")
+        
     before_state = enc.state
     enc.state = EncounterState.drafting.value
     enc.ended_at = datetime.now(timezone.utc)
@@ -239,7 +242,8 @@ async def ws_stream(websocket: WebSocket, id: str, db: AsyncSession = Depends(ge
     try:
         asr_ws = await websockets.connect(f"{ASR_WS_URL}?encounter_id={id}")
         await asr_ws.send(json.dumps({"encounter_id": id}))
-    except Exception:
+    except Exception as e:
+        print(f"Failed to connect to ASR: {e}")
         # For tests, we might not have ASR running
         pass
 
@@ -303,7 +307,7 @@ async def ws_stream(websocket: WebSocket, id: str, db: AsyncSession = Depends(ge
                     await db.commit()
                 if asr_ws:
                     await asr_ws.send(data)
-                break
+                continue
                 
             elif t == "error":
                 before = enc.state
@@ -311,7 +315,7 @@ async def ws_stream(websocket: WebSocket, id: str, db: AsyncSession = Depends(ge
                 enc.degraded_reason = msg.get("reason", "unknown error")
                 append_audit_log(db, str(enc.id), enc.clinician_id, "state_change", before={"state": before}, after={"state": enc.state})
                 await db.commit()
-                break
+                continue
                 
     except WebSocketDisconnect:
         pass

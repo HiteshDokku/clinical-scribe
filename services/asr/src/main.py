@@ -23,6 +23,8 @@ async def transcribe_ws(websocket: WebSocket):
     while encounter_id is None:
         try:
             msg = await websocket.receive()
+            if msg.get("type") == "websocket.disconnect":
+                return
             if "text" in msg:
                 handshake_text = msg["text"]
                 try:
@@ -43,6 +45,9 @@ async def transcribe_ws(websocket: WebSocket):
     try:
         while True:
             message = await websocket.receive()
+            if message.get("type") == "websocket.disconnect":
+                break
+            
             if "bytes" in message:
                 data = message["bytes"]
                 

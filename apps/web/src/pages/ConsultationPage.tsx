@@ -83,6 +83,8 @@ export function ConsultationPage() {
     }
   }, [updateEncounter, id, navigate, addEvent, startAudio]);
 
+  const [isStopping, setIsStopping] = useState(false);
+
   const handleStopRecording = useCallback(async () => {
     updateEncounter({ state: 'transcribing' });
     if (IS_MOCK) {
@@ -92,8 +94,14 @@ export function ConsultationPage() {
       }, 1500);
     } else {
       stopAudio();
+      setIsStopping(true);
       sendStop();
-      if (id) {
+    }
+  }, [updateEncounter, id, navigate, mockCleanup, stopAudio, sendStop]);
+
+  useEffect(() => {
+    if (isStopping && !isConnected && !IS_MOCK && id) {
+      const generate = async () => {
         try {
           const finalSegments = [...segments];
           if (currentPartial) {
@@ -105,9 +113,10 @@ export function ConsultationPage() {
           console.error('Failed to generate note:', err);
           updateEncounter({ state: 'degraded' });
         }
-      }
+      };
+      generate();
     }
-  }, [updateEncounter, id, navigate, mockCleanup, stopAudio, sendStop, segments, currentPartial]);
+  }, [isStopping, isConnected, IS_MOCK, id, segments, currentPartial, navigate, updateEncounter]);
 
   const canRecord =
     consentState === 'granted' || consentState === 'granted_verbal_witnessed';

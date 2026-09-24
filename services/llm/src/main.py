@@ -29,7 +29,7 @@ class GenerateRequest(BaseModel):
 
 def call_llm(system_prompt: str, response_model: type[BaseModel]) -> dict:
     payload = {
-        "model": "llama-3-8b-instruct",
+        "model": os.getenv("LLM_MODEL_NAME", "llama3.1:latest"),
         "messages": [
             {"role": "system", "content": system_prompt}
         ],
@@ -55,6 +55,9 @@ def call_llm(system_prompt: str, response_model: type[BaseModel]) -> dict:
 
 @app.post("/generate_note", response_model=SoapNote)
 def generate_note(req: GenerateRequest) -> SoapNote:
+    if not req.segments:
+        raise HTTPException(status_code=400, detail="No transcript segments provided. Cannot generate SOAP note.")
+        
     # 1. Extract
     extract_template = env.get_template("extract_v1.j2")
     extract_prompt = extract_template.render(segments=[s.model_dump() for s in req.segments])

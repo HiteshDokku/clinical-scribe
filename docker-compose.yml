@@ -67,7 +67,9 @@ services:
     build:
       context: .
       dockerfile: services/llm/Dockerfile
-    networks: [clinic]
+    networks: [clinic, edge]
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     environment:
       - LLM_BACKEND=${LLM_BACKEND}
       - LLM_MODEL_NAME=${LLM_MODEL_NAME}
