@@ -254,6 +254,11 @@ async def ws_stream(websocket: WebSocket, id: str, db: AsyncSession = Depends(ge
                 await websocket.send_text(message)
         except Exception:
             pass
+        finally:
+            try:
+                await websocket.close()
+            except Exception:
+                pass
 
     asyncio.create_task(forward_to_client())
 
