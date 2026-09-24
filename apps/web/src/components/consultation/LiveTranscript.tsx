@@ -24,9 +24,9 @@ export function LiveTranscript({ segments, currentPartial }: Props) {
   };
 
   const getSpeakerLabel = (speaker?: string | null) => {
-    if (speaker === 'clinician') return 'Clinician';
-    if (speaker === 'patient') return 'Patient';
-    return 'Speaker';
+    if (speaker === 'clinician') return '[Doctor]';
+    if (speaker === 'patient') return '[Patient]';
+    return '[Unknown]';
   };
 
   return (

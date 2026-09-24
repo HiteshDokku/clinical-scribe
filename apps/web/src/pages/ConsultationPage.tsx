@@ -89,34 +89,32 @@ export function ConsultationPage() {
     updateEncounter({ state: 'transcribing' });
     if (IS_MOCK) {
       mockCleanup?.();
-      setTimeout(() => {
-        navigate(`/encounter/${id}/review`);
-      }, 1500);
+      setIsStopping(true);
     } else {
       stopAudio();
       setIsStopping(true);
       sendStop();
     }
-  }, [updateEncounter, id, navigate, mockCleanup, stopAudio, sendStop]);
+  }, [updateEncounter, id, mockCleanup, stopAudio, sendStop]);
 
-  useEffect(() => {
-    if (isStopping && !isConnected && !IS_MOCK && id) {
-      const generate = async () => {
-        try {
-          const finalSegments = [...segments];
-          if (currentPartial) {
-            finalSegments.push(currentPartial);
-          }
-          await generateNote(id, finalSegments);
-          navigate(`/encounter/${id}/review`);
-        } catch (err) {
-          console.error('Failed to generate note:', err);
-          updateEncounter({ state: 'degraded' });
-        }
-      };
-      generate();
+  const [isGenerating, setIsGenerating] = useState(false);
+
+  const handleGenerateNote = async () => {
+    if (!id) return;
+    setIsGenerating(true);
+    try {
+      const finalSegments = [...segments];
+      if (currentPartial) {
+        finalSegments.push(currentPartial);
+      }
+      await generateNote(id, finalSegments);
+      navigate(`/encounter/${id}/review`);
+    } catch (err) {
+      console.error('Failed to generate note:', err);
+      updateEncounter({ state: 'degraded' });
+      setIsGenerating(false);
     }
-  }, [isStopping, isConnected, IS_MOCK, id, segments, currentPartial, navigate, updateEncounter]);
+  };
 
   const canRecord =
     consentState === 'granted' || consentState === 'granted_verbal_witnessed';
@@ -172,7 +170,7 @@ export function ConsultationPage() {
           currentPartial={currentPartial}
         />
 
-        {encounterState === 'transcribing' && (
+        {encounterState === 'transcribing' && isConnected && !IS_MOCK && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -184,7 +182,33 @@ export function ConsultationPage() {
                 <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
               </svg>
             </div>
-            <p className="text-sm text-gray-300">Processing transcript and generating SOAP note...</p>
+            <p className="text-sm text-gray-300">Processing final audio chunks...</p>
+          </motion.div>
+        )}
+
+        {isStopping && (!isConnected || IS_MOCK) && (
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="flex justify-center mt-6"
+          >
+            <button 
+              className="px-6 py-3 rounded-lg font-semibold text-white transition-all bg-clinical-500 hover:bg-clinical-400 shadow-[0_0_20px_rgba(30,190,165,0.3)] hover:shadow-[0_0_30px_rgba(30,190,165,0.5)] flex items-center gap-2"
+              onClick={handleGenerateNote}
+              disabled={isGenerating}
+            >
+              {isGenerating ? (
+                <>
+                  <svg className="animate-spin w-5 h-5" viewBox="0 0 24 24" fill="none">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                  </svg>
+                  Generating SOAP Note...
+                </>
+              ) : (
+                'Generate SOAP Note'
+              )}
+            </button>
           </motion.div>
         )}
       </div>
