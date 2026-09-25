@@ -98,6 +98,7 @@ export function ConsultationPage() {
   }, [updateEncounter, id, mockCleanup, stopAudio, sendStop]);
 
   const [isGenerating, setIsGenerating] = useState(false);
+  const [isNoteGenerated, setIsNoteGenerated] = useState(false);
 
   const handleGenerateNote = async () => {
     if (!id) return;
@@ -108,7 +109,8 @@ export function ConsultationPage() {
         finalSegments.push(currentPartial);
       }
       await generateNote(id, finalSegments);
-      navigate(`/encounter/${id}/review`);
+      setIsGenerating(false);
+      setIsNoteGenerated(true);
     } catch (err) {
       console.error('Failed to generate note:', err);
       updateEncounter({ state: 'degraded' });
@@ -192,23 +194,32 @@ export function ConsultationPage() {
             animate={{ opacity: 1, y: 0 }}
             className="flex justify-center mt-6"
           >
-            <button 
-              className="px-6 py-3 rounded-lg font-semibold text-white transition-all bg-clinical-500 hover:bg-clinical-400 shadow-[0_0_20px_rgba(30,190,165,0.3)] hover:shadow-[0_0_30px_rgba(30,190,165,0.5)] flex items-center gap-2"
-              onClick={handleGenerateNote}
-              disabled={isGenerating}
-            >
-              {isGenerating ? (
-                <>
-                  <svg className="animate-spin w-5 h-5" viewBox="0 0 24 24" fill="none">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                  </svg>
-                  Generating SOAP Note...
-                </>
-              ) : (
-                'Generate SOAP Note'
-              )}
-            </button>
+            {!isNoteGenerated ? (
+              <button 
+                className="px-6 py-3 rounded-lg font-semibold text-white transition-all bg-clinical-500 hover:bg-clinical-400 shadow-[0_0_20px_rgba(30,190,165,0.3)] hover:shadow-[0_0_30px_rgba(30,190,165,0.5)] flex items-center gap-2"
+                onClick={handleGenerateNote}
+                disabled={isGenerating}
+              >
+                {isGenerating ? (
+                  <>
+                    <svg className="animate-spin w-5 h-5" viewBox="0 0 24 24" fill="none">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                    </svg>
+                    Generating SOAP Note...
+                  </>
+                ) : (
+                  'Generate SOAP Note'
+                )}
+              </button>
+            ) : (
+              <button 
+                className="px-6 py-3 rounded-lg font-semibold text-white transition-all bg-emerald-500 hover:bg-emerald-400 shadow-[0_0_20px_rgba(16,185,129,0.3)] hover:shadow-[0_0_30px_rgba(16,185,129,0.5)] flex items-center gap-2"
+                onClick={() => navigate(`/encounter/${id}/review`)}
+              >
+                Open SOAP Note →
+              </button>
+            )}
           </motion.div>
         )}
       </div>
