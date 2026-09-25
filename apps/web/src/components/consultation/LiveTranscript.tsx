@@ -17,52 +17,26 @@ export function LiveTranscript({ segments, currentPartial }: Props) {
     }
   }, [segments, currentPartial]);
 
-  const getSpeakerStyles = (speaker?: string | null) => {
-    if (speaker === 'clinician') {
-      return {
-        container: 'flex w-full justify-start',
-        bubble: 'bg-clinical-900/30 border-clinical-500/30 rounded-br-2xl rounded-tr-2xl rounded-tl-2xl rounded-bl-sm',
-        text: 'text-clinical-100',
-        label: 'text-clinical-400',
-        name: 'Doctor'
-      };
-    }
-    if (speaker === 'patient') {
-      return {
-        container: 'flex w-full justify-end',
-        bubble: 'bg-emerald-900/30 border-emerald-500/30 rounded-bl-2xl rounded-tl-2xl rounded-tr-2xl rounded-br-sm',
-        text: 'text-emerald-50',
-        label: 'text-emerald-400',
-        name: 'Patient'
-      };
-    }
-    return {
-      container: 'flex w-full justify-center',
-      bubble: 'bg-gray-800/50 border-gray-600/50 rounded-2xl',
-      text: 'text-gray-300',
-      label: 'text-gray-400',
-      name: 'Unknown'
-    };
-  };
-
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: 0.2, duration: 0.4 }}
-      className="glass-card p-6 flex flex-col"
+      className="bg-surface-1 rounded-xl p-6 flex flex-col shadow-lg border border-surface-3"
       style={{ minHeight: '400px' }}
     >
-      <div className="flex items-center justify-between mb-4">
-        <h3 className="section-label">Live Transcript</h3>
-        <span className="text-xs text-gray-500">
-          {segments.length} segment{segments.length !== 1 ? 's' : ''}
-        </span>
+      <div className="flex items-center justify-between mb-4 border-b border-surface-3 pb-3">
+        <h3 className="text-sm font-bold text-gray-300 uppercase tracking-widest">Live Transcript</h3>
+        <div className="flex items-center gap-4">
+          <span className="text-xs text-gray-400 font-mono">
+            {segments.length} segment{segments.length !== 1 ? 's' : ''}
+          </span>
+        </div>
       </div>
 
       <div
         ref={scrollRef}
-        className="flex-1 overflow-y-auto space-y-4 max-h-[500px] pr-2"
+        className="flex-1 overflow-y-auto space-y-1 max-h-[500px] pr-2 divide-y divide-surface-3"
       >
         {segments.length === 0 && !currentPartial && (
           <div className="flex items-center justify-center h-full min-h-[250px]">
@@ -74,28 +48,24 @@ export function LiveTranscript({ segments, currentPartial }: Props) {
 
         <AnimatePresence mode="popLayout">
           {segments.map((seg) => {
-            const styles = getSpeakerStyles(seg.speaker);
             return (
               <motion.div
                 key={seg.id}
-                initial={{ opacity: 0, y: 12, scale: 0.98 }}
-                animate={{ opacity: 1, y: 0, scale: 1 }}
-                transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
-                className={styles.container}
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.2 }}
+                className="flex w-full justify-start"
               >
-                <div className={`max-w-[85%] p-4 border ${styles.bubble} shadow-sm`}>
-                  <div className="flex items-center gap-2 mb-2">
-                    <span className={`text-xs font-bold ${styles.label}`}>
-                      {styles.name}
-                    </span>
-                    <span className="text-[10px] text-gray-500 font-mono">
+                <div className="w-full py-3">
+                  <div className="flex items-center gap-3 mb-1.5">
+                    <span className="text-[11px] text-gray-500 font-mono">
                       {formatTime(seg.start_ms)} – {formatTime(seg.end_ms)}
                     </span>
-                    <span className="ml-auto text-[10px] text-gray-500">
-                      {(seg.confidence * 100).toFixed(0)}%
+                    <span className="ml-auto text-[10px] text-gray-500 font-mono uppercase tracking-wider" title="ASR Transcription Confidence">
+                      ASR: {(seg.confidence * 100).toFixed(0)}%
                     </span>
                   </div>
-                  <p className={`text-sm leading-relaxed ${styles.text}`}>{seg.text}</p>
+                  <p className="text-gray-300 font-mono text-sm">{seg.text}</p>
                 </div>
               </motion.div>
             );
@@ -107,24 +77,20 @@ export function LiveTranscript({ segments, currentPartial }: Props) {
           {currentPartial && (
             <motion.div
               key="partial"
-              initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -4 }}
-              transition={{ duration: 0.2 }}
-              className={getSpeakerStyles(currentPartial.speaker).container}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="flex w-full justify-start"
             >
-              <div className={`max-w-[85%] p-4 border ${getSpeakerStyles(currentPartial.speaker).bubble} opacity-80 border-dashed`}>
-                <div className="flex items-center gap-2 mb-2">
-                  <span className={`text-xs font-bold ${getSpeakerStyles(currentPartial.speaker).label}`}>
-                    {getSpeakerStyles(currentPartial.speaker).name}
-                  </span>
-                  <div className="flex gap-0.5 ml-1">
-                    <span className="w-1 h-1 rounded-full bg-clinical-400 animate-bounce" style={{ animationDelay: '0ms' }} />
-                    <span className="w-1 h-1 rounded-full bg-clinical-400 animate-bounce" style={{ animationDelay: '150ms' }} />
-                    <span className="w-1 h-1 rounded-full bg-clinical-400 animate-bounce" style={{ animationDelay: '300ms' }} />
+              <div className="w-full py-3 opacity-60">
+                <div className="flex items-center gap-3 mb-1.5">
+                  <div className="flex gap-0.5 ml-1 opacity-50">
+                    <span className="w-1.5 h-1.5 rounded-full bg-gray-500 animate-bounce" style={{ animationDelay: '0ms' }} />
+                    <span className="w-1.5 h-1.5 rounded-full bg-gray-500 animate-bounce" style={{ animationDelay: '150ms' }} />
+                    <span className="w-1.5 h-1.5 rounded-full bg-gray-500 animate-bounce" style={{ animationDelay: '300ms' }} />
                   </div>
                 </div>
-                <p className={`text-sm italic ${getSpeakerStyles(currentPartial.speaker).text}`}>{currentPartial.text}</p>
+                <p className="text-gray-500 font-mono text-sm italic">{currentPartial.text}</p>
               </div>
             </motion.div>
           )}

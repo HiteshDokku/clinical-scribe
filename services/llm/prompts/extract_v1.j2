@@ -4,7 +4,7 @@ Include symptoms (both active and explicitly denied), medications, diagnoses, vi
 
 Transcript Segments:
 {% for segment in segments %}
-[{{ segment.id }}]: {{ segment.text }}
+[{{ segment.id }}] {% if segment.speaker %}[{{ segment.speaker }}]: {% endif %}{{ segment.text }}
 {% endfor %}
 
 Extract every entity accurately. Ensure absolutely nothing is hallucinated.

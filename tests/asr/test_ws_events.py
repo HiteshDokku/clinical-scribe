@@ -45,6 +45,6 @@ def test_ws_handshake_and_events(fixture_wav_bytes):
                 assert isinstance(event["start_ms"], int)
                 assert isinstance(event["end_ms"], int)
                 assert isinstance(event["confidence"], float)
-                assert event.get("speaker") is None
+                assert event.get("speaker") in ("clinician", "patient")
         except Exception:
             pass

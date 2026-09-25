@@ -44,9 +44,14 @@ export function connectWebSocket(
 
     ws.onmessage = (event: MessageEvent) => {
       try {
-        const data = JSON.parse(event.data as string) as TranscriptEvent | { error: string };
+        const data = JSON.parse(event.data as string);
         if ('error' in data) {
           callbacks.onError(data.error);
+        } else if (data.t === 'done') {
+          console.log('[WS] Received explicit done signal, closing connection.');
+          reconnectAttempts = maxReconnects; // prevent reconnect
+          ws?.close(1000, 'Done');
+          callbacks.onClose();
         } else {
           callbacks.onTranscript(data as TranscriptEvent);
         }
@@ -59,8 +64,12 @@ export function connectWebSocket(
       callbacks.onError('WebSocket connection error');
     };
 
-    ws.onclose = () => {
+    ws.onclose = (event: CloseEvent) => {
+      console.log(`[WS] Connection closed with code: ${event.code}`);
       callbacks.onClose();
+      if (event.code === 1000 || event.code === 1008) {
+        return; // Intended closure, do not reconnect
+      }
       if (reconnectAttempts < maxReconnects) {
         reconnectAttempts++;
         const delay = Math.min(1000 * Math.pow(2, reconnectAttempts), 16000);

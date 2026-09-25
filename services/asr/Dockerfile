@@ -3,8 +3,10 @@ FROM python:3.12-slim
 WORKDIR /app
 
 # curl is needed by the docker-compose healthcheck, ffmpeg is needed for faster-whisper
-RUN apt-get update && apt-get install -y --no-install-recommends curl ffmpeg \
+RUN apt-get update && apt-get install -y --no-install-recommends curl ffmpeg git git-lfs \
     && rm -rf /var/lib/apt/lists/*
+
+COPY services/asr/models /models
 
 ENV WHISPER_MODEL=tiny
 
@@ -12,6 +14,7 @@ ENV WHISPER_MODEL=tiny
 RUN pip install --no-cache-dir uv
 
 COPY services/asr/pyproject.toml ./
+RUN uv pip install --system --no-cache --extra-index-url https://download.pytorch.org/whl/cpu torch torchaudio
 RUN uv pip install --system --no-cache -e .
 
 COPY services/asr/src ./src

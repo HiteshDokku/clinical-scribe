@@ -72,9 +72,7 @@ export function ConsultationPage() {
         (event: TranscriptEvent) => addEvent(event),
         () => {
           updateEncounter({ state: 'transcribing' });
-          setTimeout(() => {
-            navigate(`/encounter/${id}/review`);
-          }, 1500);
+          setIsStopping(true);
         },
       );
       setMockCleanup(() => cleanup);
@@ -108,6 +106,7 @@ export function ConsultationPage() {
       if (currentPartial) {
         finalSegments.push(currentPartial);
       }
+      
       await generateNote(id, finalSegments);
       setIsGenerating(false);
       setIsNoteGenerated(true);

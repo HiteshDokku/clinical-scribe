@@ -25,6 +25,7 @@ class ASRSegment(BaseModel):
     text: str
     start_ms: int
     end_ms: int
+    speaker: str | None = None
 
 from packages.contracts.python.soap_note import Sections, Medication, DifferentialConsideration
 

@@ -7,11 +7,18 @@ from .schemas import TranscriptEvent
 class Transcriber:
     def __init__(self):
         model_size = os.getenv("WHISPER_MODEL", "tiny")
+        threads = max(1, os.cpu_count() or 4)
         # faster-whisper uses CTranslate2
         # Load once into memory
-        self.model = WhisperModel(model_size, device="cpu", compute_type="int8")
+        self.model = WhisperModel(model_size, device="cpu", compute_type="int8", cpu_threads=threads)
 
-    def transcribe(self, audio_bytes: bytes, is_final: bool = False) -> list[TranscriptEvent]:
+    def transcribe(
+        self, 
+        audio_bytes: bytes, 
+        is_final: bool = False,
+        speaker: str | None = None,
+        speaker_confidence: float | None = None
+    ) -> list[TranscriptEvent]:
         """
         Transcribes PCM16-LE 16kHz audio bytes and yields a single combined event.
         """
@@ -43,12 +50,15 @@ class Transcriber:
         
         conf = sum([1.0 - getattr(s, 'no_speech_prob', 0.0) for s in segments]) / len(segments)
         
+        import uuid
         event = TranscriptEvent(
+            id=str(uuid.uuid4()),
             type="final" if is_final else "partial",
             text=full_text,
             start_ms=start_ms,
             end_ms=end_ms,
             confidence=conf,
-            speaker=None
+            speaker=speaker,
+            speaker_confidence=speaker_confidence
         )
         return [event]

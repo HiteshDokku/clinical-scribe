@@ -28,6 +28,15 @@ export default {
           3: '#1f2b3f',
           4: '#253349',
         },
+        paper: {
+          DEFAULT: '#F5F5F3',
+          2: '#EAEAE8',
+          3: '#DFDFDC'
+        },
+        speaker: {
+          clinician: '#3E5C6B',
+          patient: '#5E6B3E',
+        },
         safety: {
           'flag-red': '#ef4444',
           'flag-amber': '#f59e0b',

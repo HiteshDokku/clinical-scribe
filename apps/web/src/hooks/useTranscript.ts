@@ -30,7 +30,7 @@ export function useTranscript(): UseTranscriptReturn {
 
   const addEvent = useCallback((event: TranscriptEvent) => {
     const segment: TranscriptSegment = {
-      id: `seg-${++segmentCounter}`,
+      id: event.id || `seg-${++segmentCounter}`,
       text: event.text,
       type: event.type,
       speaker: event.speaker,
@@ -43,7 +43,16 @@ export function useTranscript(): UseTranscriptReturn {
       setCurrentPartial(segment);
     } else {
       setCurrentPartial(null);
-      setSegments((prev) => [...prev, segment]);
+      setSegments((prev) => {
+        // If we receive an event with the same ID, replace it (used for swap)
+        const idx = prev.findIndex((s) => s.id === segment.id);
+        if (idx !== -1) {
+          const next = [...prev];
+          next[idx] = segment;
+          return next;
+        }
+        return [...prev, segment];
+      });
     }
   }, []);
 

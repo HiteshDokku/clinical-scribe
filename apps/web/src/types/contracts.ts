@@ -35,6 +35,7 @@ export interface Encounter {
 /* ─── Transcript Events (from ASR via gateway WS) ──────── */
 
 export interface TranscriptEvent {
+  id?: string;
   type: 'partial' | 'final';
   text: string;
   start_ms: number;
@@ -49,6 +50,7 @@ export type WsOutboundMessage =
   | { t: 'consent'; value: ConsentState }
   | { t: 'audio'; data: string }
   | { t: 'stop' }
+  | { t: 'swap' }
   | { t: 'error'; reason: string };
 
 /* ─── SOAP Note — mirrors soap_note.schema.json exactly ── */

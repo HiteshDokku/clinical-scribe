@@ -47,15 +47,13 @@ services:
     environment:
       - WHISPER_MODEL=${WHISPER_MODEL}
       - ASR_MAX_BUFFER_SECONDS=${ASR_MAX_BUFFER_SECONDS}
-    # NOTE: GPU device reservation removed for scaffold — model loading added at M2.
-    # To re-enable GPU in prod, add:
-    #   deploy:
-    #     resources:
-    #       reservations:
-    #         devices:
-    #           - driver: nvidia
-    #             count: 1
-    #             capabilities: [gpu]
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: 1
+    #           capabilities: [gpu]
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8001/healthz"]
       interval: 10s

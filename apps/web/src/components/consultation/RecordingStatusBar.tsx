@@ -9,7 +9,7 @@ interface Props {
 
 const STATE_LABELS: Record<EncounterState, string> = {
   created: 'Session Created',
-  consented: 'Consent Recorded',
+  consented: 'Conversation Recorded',
   recording: 'Recording',
   transcribing: 'Processing Transcript',
   drafting: 'Generating Note',
