@@ -4,7 +4,6 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from .ring_buffer import RingBuffer
 from .vad import VADGater
 from .transcriber import Transcriber
-from .diarizer import OnlineDiarizer
 
 app = FastAPI(title="asr")
 

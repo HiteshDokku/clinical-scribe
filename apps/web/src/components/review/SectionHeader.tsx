@@ -3,7 +3,8 @@ import { motion } from 'framer-motion';
 interface Props {
   title: string;
   sectionKey: string;
-  count: number;
+  count?: number;
+  actions?: React.ReactNode;
 }
 
 const SECTION_ICONS: Record<string, string> = {
@@ -11,6 +12,7 @@ const SECTION_ICONS: Record<string, string> = {
   objective: '🔬',
   assessment: '🧠',
   plan: '📋',
+  medications: '💊',
 };
 
 const SECTION_DESCRIPTIONS: Record<string, string> = {
@@ -18,9 +20,10 @@ const SECTION_DESCRIPTIONS: Record<string, string> = {
   objective: 'Clinical observations and measurements',
   assessment: 'Clinical interpretation and diagnosis',
   plan: 'Treatment plan and follow-up',
+  medications: 'Prescribed and recommended medications',
 };
 
-export function SectionHeader({ title, sectionKey, count }: Props) {
+export function SectionHeader({ title, sectionKey, count, actions }: Props) {
   return (
     <motion.div
       initial={{ opacity: 0, x: -10 }}
@@ -35,14 +38,21 @@ export function SectionHeader({ title, sectionKey, count }: Props) {
           <h3 className="text-sm font-bold text-white uppercase tracking-wide">
             {title}
           </h3>
-          <span className="badge-ai text-[10px]">
-            {count} statement{count !== 1 ? 's' : ''}
-          </span>
+          {count !== undefined && (
+            <span className="badge-ai text-[10px]">
+              {count} statement{count !== 1 ? 's' : ''}
+            </span>
+          )}
         </div>
         <p className="text-xs text-gray-500 mt-0.5">
           {SECTION_DESCRIPTIONS[sectionKey] ?? ''}
         </p>
       </div>
+      {actions && (
+        <div className="flex items-center gap-2 ml-4">
+          {actions}
+        </div>
+      )}
     </motion.div>
   );
 }

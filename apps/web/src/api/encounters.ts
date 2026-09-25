@@ -33,9 +33,11 @@ export async function getNote(encounterId: string): Promise<SoapNote> {
   return res.json() as Promise<SoapNote>;
 }
 
-export async function signNote(encounterId: string): Promise<{ status: string }> {
+export async function signNote(encounterId: string, editedSections?: Record<string, string>): Promise<{ status: string }> {
   const res = await fetch(`${BASE}/encounters/${encounterId}/sign`, {
     method: 'POST',
+    headers: editedSections ? { 'Content-Type': 'application/json' } : undefined,
+    body: editedSections ? JSON.stringify({ edits: editedSections }) : undefined,
   });
   if (!res.ok) throw new Error(`Failed to sign note: ${res.status}`);
   return res.json() as Promise<{ status: string }>;

@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { motion } from 'framer-motion';
 import type { SoapNote, StatementList } from '@/types/contracts';
 import { SectionHeader } from './SectionHeader';
@@ -9,7 +10,7 @@ import { useReviewState } from '@/hooks/useReviewState';
 interface Props {
   soapNote: SoapNote;
   evidenceMap: Record<string, string>;
-  onSign: () => void;
+  onSign: (editedSections: Record<string, string>) => void;
 }
 
 type SectionKey = 'subjective' | 'objective' | 'assessment' | 'plan';
@@ -22,39 +23,110 @@ const SECTION_TITLES: Record<SectionKey, string> = {
 };
 
 export function SoapReviewScreen({ soapNote, evidenceMap, onSign }: Props) {
+  const [editingSection, setEditingSection] = useState<string | null>(null);
+  const [draftText, setDraftText] = useState<string>('');
+
   const {
+    reviewState,
     isStatementReviewed,
     isFlagAcknowledged,
     reviewStatement,
     acknowledgeSafetyFlag,
+    approveSection,
     canSign,
     blockingReasons,
   } = useReviewState(soapNote);
 
   const ungroundedIds = new Set(soapNote.grounding.ungrounded_ids);
 
-  const renderSection = (key: SectionKey, statements: StatementList) => (
-    <div key={key}>
-      <SectionHeader
-        title={SECTION_TITLES[key]}
-        sectionKey={key}
-        count={statements.length}
-      />
-      <div className="space-y-2">
-        {statements.map((stmt, i) => (
-          <StatementRow
-            key={stmt.id}
-            statement={stmt}
-            isUngrounded={ungroundedIds.has(stmt.id)}
-            isReviewed={isStatementReviewed(stmt.id)}
-            onReview={reviewStatement}
-            evidenceMap={evidenceMap}
-            index={i}
-          />
-        ))}
+  const renderSection = (key: SectionKey, statements: StatementList) => {
+    const isApproved = reviewState.sectionApprovals[key];
+    const isEditing = editingSection === key;
+    const customText = reviewState.sectionEdits[key];
+
+    const handleEditClick = () => {
+      setEditingSection(key);
+      if (customText !== undefined) {
+        setDraftText(customText);
+      } else {
+        setDraftText(statements.map(s => s.text).join('\n'));
+      }
+    };
+
+    const handleSave = () => {
+      approveSection(key, draftText);
+      setEditingSection(null);
+    };
+
+    const handleApprove = () => {
+      approveSection(key, customText);
+    };
+
+    const actions = (
+      <>
+        {!isApproved && !isEditing && (
+          <>
+            <button onClick={handleApprove} className="btn-primary text-xs px-3 py-1.5 min-w-[80px]">Approve</button>
+            <button onClick={handleEditClick} className="btn-secondary text-xs px-3 py-1.5 min-w-[80px]">Edit</button>
+          </>
+        )}
+        {isApproved && !isEditing && (
+          <>
+            <span className="text-safety-success text-xs font-bold flex items-center gap-1">
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
+              Approved
+            </span>
+            <button onClick={handleEditClick} className="btn-ghost text-xs px-3 py-1.5 ml-2">Edit</button>
+          </>
+        )}
+        {isEditing && (
+          <>
+            <button onClick={() => setEditingSection(null)} className="btn-ghost text-xs px-3 py-1.5">Cancel</button>
+            <button onClick={handleSave} className="btn-primary text-xs px-3 py-1.5">Save & Approve</button>
+          </>
+        )}
+      </>
+    );
+
+    return (
+      <div key={key} className={`border rounded-xl p-4 transition-colors ${isApproved ? 'border-safety-success/30 bg-safety-success/5' : 'border-clinical-700/50'}`}>
+        <SectionHeader
+          title={SECTION_TITLES[key]}
+          sectionKey={key}
+          count={customText !== undefined ? undefined : statements.length}
+          actions={actions}
+        />
+        
+        {isEditing ? (
+          <div className="mt-3">
+            <textarea
+              className="w-full bg-clinical-900 border border-clinical-700 rounded-lg p-3 text-sm text-gray-200 focus:outline-none focus:border-clinical-500 min-h-[100px]"
+              value={draftText}
+              onChange={(e) => setDraftText(e.target.value)}
+            />
+          </div>
+        ) : customText !== undefined ? (
+          <div className="mt-3 text-sm text-gray-200 whitespace-pre-wrap pl-2 border-l-2 border-clinical-600">
+            {customText}
+          </div>
+        ) : (
+          <div className="space-y-2 mt-3">
+            {statements.map((stmt, i) => (
+              <StatementRow
+                key={stmt.id}
+                statement={stmt}
+                isUngrounded={ungroundedIds.has(stmt.id)}
+                isReviewed={isStatementReviewed(stmt.id)}
+                onReview={reviewStatement}
+                evidenceMap={evidenceMap}
+                index={i}
+              />
+            ))}
+          </div>
+        )}
       </div>
-    </div>
-  );
+    );
+  };
 
   return (
     <motion.div
@@ -109,7 +181,7 @@ export function SoapReviewScreen({ soapNote, evidenceMap, onSign }: Props) {
       </div>
 
       {/* SOAP Sections */}
-      <div className="space-y-2">
+      <div className="space-y-4">
         {renderSection('subjective', soapNote.sections.subjective)}
         {renderSection('objective', soapNote.sections.objective)}
         {renderSection('assessment', soapNote.sections.assessment)}
@@ -117,31 +189,98 @@ export function SoapReviewScreen({ soapNote, evidenceMap, onSign }: Props) {
       </div>
 
       {/* Medications */}
-      {soapNote.medications && soapNote.medications.length > 0 && (
-        <div className="mt-8">
-          <SectionHeader
-            title="Medications"
-            sectionKey="medications"
-            count={soapNote.medications.length}
-          />
-          <div className="space-y-3">
-            {soapNote.medications.map((med) => (
-              <MedicationRow
-                key={med.id}
-                medication={med}
-                isFlagAcknowledged={isFlagAcknowledged}
-                onAcknowledgeFlag={acknowledgeSafetyFlag}
-              />
-            ))}
+      {soapNote.medications && soapNote.medications.length > 0 && (() => {
+        const key = 'medications';
+        const isApproved = reviewState.sectionApprovals[key];
+        const isEditing = editingSection === key;
+        const customText = reviewState.sectionEdits[key];
+
+        const handleEditClick = () => {
+          setEditingSection(key);
+          if (customText !== undefined) {
+            setDraftText(customText);
+          } else {
+            setDraftText(soapNote.medications!.map(m => `${m.verbatim}${m.dose?.value ? ` ${m.dose.value} ${m.dose.unit || ''}` : ''}`).join('\n'));
+          }
+        };
+
+        const handleSave = () => {
+          approveSection(key, draftText);
+          setEditingSection(null);
+        };
+
+        const handleApprove = () => {
+          approveSection(key, customText);
+        };
+
+        const actions = (
+          <>
+            {!isApproved && !isEditing && (
+              <>
+                <button onClick={handleApprove} className="btn-primary text-xs px-3 py-1.5 min-w-[80px]">Approve</button>
+                <button onClick={handleEditClick} className="btn-secondary text-xs px-3 py-1.5 min-w-[80px]">Edit</button>
+              </>
+            )}
+            {isApproved && !isEditing && (
+              <>
+                <span className="text-safety-success text-xs font-bold flex items-center gap-1">
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
+                  Approved
+                </span>
+                <button onClick={handleEditClick} className="btn-ghost text-xs px-3 py-1.5 ml-2">Edit</button>
+              </>
+            )}
+            {isEditing && (
+              <>
+                <button onClick={() => setEditingSection(null)} className="btn-ghost text-xs px-3 py-1.5">Cancel</button>
+                <button onClick={handleSave} className="btn-primary text-xs px-3 py-1.5">Save & Approve</button>
+              </>
+            )}
+          </>
+        );
+
+        return (
+          <div className={`mt-4 border rounded-xl p-4 transition-colors ${isApproved ? 'border-safety-success/30 bg-safety-success/5' : 'border-clinical-700/50'}`}>
+            <SectionHeader
+              title="Medications"
+              sectionKey="medications"
+              count={customText !== undefined ? undefined : soapNote.medications.length}
+              actions={actions}
+            />
+            
+            {isEditing ? (
+              <div className="mt-3">
+                <textarea
+                  className="w-full bg-clinical-900 border border-clinical-700 rounded-lg p-3 text-sm text-gray-200 focus:outline-none focus:border-clinical-500 min-h-[100px]"
+                  value={draftText}
+                  onChange={(e) => setDraftText(e.target.value)}
+                />
+              </div>
+            ) : customText !== undefined ? (
+              <div className="mt-3 text-sm text-gray-200 whitespace-pre-wrap pl-2 border-l-2 border-clinical-600">
+                {customText}
+              </div>
+            ) : (
+              <div className="space-y-3 mt-3">
+                {soapNote.medications.map((med) => (
+                  <MedicationRow
+                    key={med.id}
+                    medication={med}
+                    isFlagAcknowledged={isFlagAcknowledged}
+                    onAcknowledgeFlag={acknowledgeSafetyFlag}
+                  />
+                ))}
+              </div>
+            )}
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* Sign Button */}
       <SignButton
         canSign={canSign}
         blockingReasons={blockingReasons}
-        onSign={onSign}
+        onSign={() => onSign(reviewState.sectionEdits)}
       />
     </motion.div>
   );

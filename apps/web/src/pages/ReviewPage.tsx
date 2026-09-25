@@ -36,10 +36,10 @@ export function ReviewPage() {
   // In mock mode, use the fixture. In real mode, use fetched note.
   const soapNote = IS_MOCK ? { ...MOCK_SOAP_NOTE, encounter_id: id ?? MOCK_SOAP_NOTE.encounter_id } : liveNote;
 
-  const handleSign = useCallback(async () => {
+  const handleSign = useCallback(async (editedSections: Record<string, string>) => {
     if (!id) return;
     try {
-      if (!IS_MOCK) await signNote(id);
+      if (!IS_MOCK) await signNote(id, editedSections);
       setIsSigned(true);
     } catch (err) {
       console.error('Failed to sign:', err);

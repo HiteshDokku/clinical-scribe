@@ -124,6 +124,10 @@ export interface ReviewState {
   statementReviews: Record<string, boolean>;
   /** Map of "medication_id:flag_index" → whether the flag was individually acknowledged */
   flagAcknowledgments: Record<string, boolean>;
+  /** Map of section key → whether the section is approved */
+  sectionApprovals: Record<string, boolean>;
+  /** Map of section key → the custom edited text for that section (if any) */
+  sectionEdits: Record<string, string>;
   /** Computed: true only when all ungrounded are double-confirmed AND all flags acknowledged */
   canSign: boolean;
 }

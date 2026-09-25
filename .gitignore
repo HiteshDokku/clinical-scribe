@@ -36,3 +36,5 @@ services/asr/weights/
 eval/reports/*/*.csv
 eval/reports/*/*.md
 !eval/reports/.gitkeep
+
+services/asr/models/
