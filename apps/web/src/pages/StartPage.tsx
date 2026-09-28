@@ -41,20 +41,6 @@ export function StartPage() {
 
       <StartEncounterForm onStart={handleStart} isLoading={isLoading} />
 
-      {/* Quick link to review demo */}
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ delay: 0.8 }}
-        className="mt-8"
-      >
-        <button
-          onClick={() => navigate('/encounter/mock-encounter-001/review')}
-          className="btn-ghost text-xs text-gray-500"
-        >
-          Skip to SOAP Review Demo →
-        </button>
-      </motion.div>
     </div>
   );
 }

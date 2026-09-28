@@ -2,8 +2,6 @@ import { useState, useCallback, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { SoapReviewScreen } from '@/components/review/SoapReviewScreen';
-import { MOCK_SOAP_NOTE, MOCK_EVIDENCE_MAP } from '@/mocks/soapNote';
-import { IS_MOCK } from '@/mocks/handlers';
 import { getNote, signNote } from '@/api/encounters';
 
 export function ReviewPage() {
@@ -12,10 +10,10 @@ export function ReviewPage() {
   const [isSigned, setIsSigned] = useState(false);
   const [liveNote, setLiveNote] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(!IS_MOCK);
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    if (IS_MOCK || !id) return;
+    if (!id) return;
     let mounted = true;
     getNote(id)
       .then((note) => {
@@ -33,13 +31,12 @@ export function ReviewPage() {
     return () => { mounted = false; };
   }, [id]);
 
-  // In mock mode, use the fixture. In real mode, use fetched note.
-  const soapNote = IS_MOCK ? { ...MOCK_SOAP_NOTE, encounter_id: id ?? MOCK_SOAP_NOTE.encounter_id } : liveNote;
+  const soapNote = liveNote;
 
   const handleSign = useCallback(async (editedSections: Record<string, string>) => {
     if (!id) return;
     try {
-      if (!IS_MOCK) await signNote(id, editedSections);
+      await signNote(id, editedSections);
       setIsSigned(true);
     } catch (err) {
       console.error('Failed to sign:', err);
@@ -99,7 +96,7 @@ export function ReviewPage() {
           >
             <SoapReviewScreen
               soapNote={soapNote}
-              evidenceMap={MOCK_EVIDENCE_MAP}
+              evidenceMap={{}} // TODO: fetch real evidence map if needed
               onSign={handleSign}
             />
           </motion.div>

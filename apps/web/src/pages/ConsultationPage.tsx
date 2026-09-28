@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import type { ConsentState, TranscriptEvent } from '@/types/contracts';
+import type { ConsentState } from '@/types/contracts';
 import { ConsentGate } from '@/components/consultation/ConsentGate';
 import { AudioRecorder } from '@/components/consultation/AudioRecorder';
 import { LiveTranscript } from '@/components/consultation/LiveTranscript';
@@ -10,7 +10,6 @@ import { useEncounter } from '@/hooks/useEncounter';
 import { useAudioCapture } from '@/hooks/useAudioCapture';
 import { useWebSocket } from '@/hooks/useWebSocket';
 import { useTranscript } from '@/hooks/useTranscript';
-import { IS_MOCK, mockTranscriptStream } from '@/mocks/handlers';
 import { generateNote } from '@/api/encounters';
 
 export function ConsultationPage() {
@@ -20,7 +19,6 @@ export function ConsultationPage() {
   const { isRecording, audioLevel, start: startAudio, stop: stopAudio, onChunk } = useAudioCapture();
   const { isConnected, connect, sendConsent, sendAudio, sendStop } = useWebSocket();
   const { segments, currentPartial, addEvent } = useTranscript();
-  const [mockCleanup, setMockCleanup] = useState<(() => void) | null>(null);
 
   // Derive consent/state from encounter or use local defaults for mock
   const consentState = encounter?.consent_state ?? 'pending';
@@ -34,9 +32,8 @@ export function ConsultationPage() {
     }
   }, [id, encounter, initEncounter]);
 
-  // Connect WebSocket (non-mock only)
   useEffect(() => {
-    if (!IS_MOCK && id) {
+    if (id) {
       connect(id, addEvent);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -44,7 +41,6 @@ export function ConsultationPage() {
 
   // Forward audio chunks to WebSocket
   useEffect(() => {
-    if (IS_MOCK) return;
     onChunk((chunk) => {
       sendAudio(chunk);
     });
@@ -54,7 +50,7 @@ export function ConsultationPage() {
     (value: ConsentState) => {
       if (value === 'granted' || value === 'granted_verbal_witnessed') {
         updateEncounter({ consent_state: value, state: 'consented' });
-        if (!IS_MOCK) {
+        if (id) {
           sendConsent(value);
         }
       } else {
@@ -66,34 +62,17 @@ export function ConsultationPage() {
 
   const handleStartRecording = useCallback(async () => {
     updateEncounter({ state: 'recording' });
-    if (IS_MOCK) {
-      // Start mock transcript stream
-      const cleanup = mockTranscriptStream(
-        (event: TranscriptEvent) => addEvent(event),
-        () => {
-          updateEncounter({ state: 'transcribing' });
-          setIsStopping(true);
-        },
-      );
-      setMockCleanup(() => cleanup);
-    } else {
-      await startAudio();
-    }
-  }, [updateEncounter, id, navigate, addEvent, startAudio]);
+    await startAudio();
+  }, [updateEncounter, startAudio]);
 
   const [isStopping, setIsStopping] = useState(false);
 
   const handleStopRecording = useCallback(async () => {
     updateEncounter({ state: 'transcribing' });
-    if (IS_MOCK) {
-      mockCleanup?.();
-      setIsStopping(true);
-    } else {
-      stopAudio();
-      setIsStopping(true);
-      sendStop();
-    }
-  }, [updateEncounter, id, mockCleanup, stopAudio, sendStop]);
+    stopAudio();
+    setIsStopping(true);
+    sendStop();
+  }, [updateEncounter, stopAudio, sendStop]);
 
   const [isGenerating, setIsGenerating] = useState(false);
   const [isNoteGenerated, setIsNoteGenerated] = useState(false);
@@ -147,7 +126,7 @@ export function ConsultationPage() {
       <div className="mb-6">
         <RecordingStatusBar
           state={encounterState}
-          isConnected={IS_MOCK || isConnected}
+          isConnected={isConnected}
         />
       </div>
 
@@ -171,7 +150,7 @@ export function ConsultationPage() {
           currentPartial={currentPartial}
         />
 
-        {encounterState === 'transcribing' && isConnected && !IS_MOCK && (
+        {encounterState === 'transcribing' && isConnected && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -187,7 +166,7 @@ export function ConsultationPage() {
           </motion.div>
         )}
 
-        {isStopping && (!isConnected || IS_MOCK) && (
+        {isStopping && !isConnected && (
           <motion.div
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}

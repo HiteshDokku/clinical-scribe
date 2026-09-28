@@ -1,7 +1,6 @@
 import { useState, useCallback } from 'react';
 import type { Encounter, EncounterState, ConsentState } from '@/types/contracts';
 import { createEncounter as apiCreateEncounter } from '@/api/encounters';
-import { IS_MOCK, mockCreateEncounter } from '@/mocks/handlers';
 
 interface UseEncounterReturn {
   encounter: Encounter | null;
@@ -25,12 +24,7 @@ export function useEncounter(): UseEncounterReturn {
     setIsLoading(true);
     setError(null);
     try {
-      let resp;
-      if (IS_MOCK) {
-        resp = mockCreateEncounter();
-      } else {
-        resp = await apiCreateEncounter(clinicianId, patientRef);
-      }
+      const resp = await apiCreateEncounter(clinicianId, patientRef);
       const enc: Encounter = {
         id: resp.id,
         state: resp.state as EncounterState,
