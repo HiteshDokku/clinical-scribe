@@ -1,3 +1,5 @@
+![Status](https://img.shields.io/badge/status-work_in_progress-yellow)
+
 # Privacy-Preserving Clinical Scribe and Diagnostic Copilot
 
 
