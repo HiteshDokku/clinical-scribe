@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
-import type { SoapNote, StatementList } from '@/types/contracts';
+import type { SoapNote, SoapSection } from '@/types/contracts';
 import { SectionHeader } from './SectionHeader';
 import { StatementRow } from './StatementRow';
 import { MedicationRow } from './MedicationRow';
@@ -39,10 +39,11 @@ export function SoapReviewScreen({ soapNote, evidenceMap, onSign }: Props) {
 
   const ungroundedIds = new Set(soapNote.grounding.ungrounded_ids);
 
-  const renderSection = (key: SectionKey, statements: StatementList) => {
+  const renderSection = (key: SectionKey, section: SoapSection) => {
     const isApproved = reviewState.sectionApprovals[key];
     const isEditing = editingSection === key;
     const customText = reviewState.sectionEdits[key];
+    const statements = section.statements;
 
     const handleEditClick = () => {
       setEditingSection(key);
@@ -97,7 +98,24 @@ export function SoapReviewScreen({ soapNote, evidenceMap, onSign }: Props) {
           actions={actions}
         />
         
-        {isEditing ? (
+        {/* Insufficient content state — uses --draft token (#FCD34D) per
+            docs/design/frontend-direction.md. Visually distinct from both
+            a normal confirmed section and an ungrounded/flagged one. */}
+        {section.insufficient_content && !isEditing && customText === undefined ? (
+          <div className="mt-3 rounded-lg border-2 border-dashed px-4 py-6 text-center"
+               style={{ borderColor: '#FCD34D', backgroundColor: 'rgba(252, 211, 77, 0.06)' }}>
+            <p className="text-sm font-medium" style={{ color: '#FCD34D' }}>
+              {section.reason ?? 'Not discussed in this consultation'}
+            </p>
+            <button
+              onClick={handleEditClick}
+              className="mt-3 text-xs font-semibold px-4 py-1.5 rounded-lg border transition-colors hover:bg-white/10"
+              style={{ color: '#FCD34D', borderColor: 'rgba(252, 211, 77, 0.4)' }}
+            >
+              Add manually
+            </button>
+          </div>
+        ) : isEditing ? (
           <div className="mt-3">
             <textarea
               className="w-full bg-clinical-900 border border-clinical-700 rounded-lg p-3 text-sm text-gray-200 focus:outline-none focus:border-clinical-500 min-h-[100px]"

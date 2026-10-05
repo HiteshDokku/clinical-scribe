@@ -1,4 +1,4 @@
-# 10. Speaker Diarization Strategy
+# 13. Speaker Diarization Strategy
 
 Date: 2026-09-24
 

@@ -56,17 +56,17 @@ def mock_post(self, url, **kwargs):
         msgs = str(payload.get("messages", []))
         content = {
             "sections": {
-                "subjective": [{"id": "s1", "text": "Patient has mock symptom", "evidence": ["seg_1"]}],
-                "objective": [],
-                "assessment": [],
-                "plan": []
+                "subjective": {"statements": [{"id": "s1", "text": "Patient has mock symptom", "evidence": ["seg_1"]}], "insufficient_content": False, "reason": None},
+                "objective": {"statements": [], "insufficient_content": True, "reason": "Not discussed"},
+                "assessment": {"statements": [], "insufficient_content": True, "reason": "Not discussed"},
+                "plan": {"statements": [], "insufficient_content": True, "reason": "Not discussed"}
             },
             "medications": [],
             "differential_considerations": []
         }
         
         if "symptom_denied" in msgs and "chest pain" in msgs:
-            content["sections"]["subjective"][0]["text"] = "Patient denies chest pain."
+            content["sections"]["subjective"]["statements"][0]["text"] = "Patient denies chest pain."
         elif "dose ambiguous" in msgs:
             content["medications"] = [{
                 "id": "m1",
@@ -84,7 +84,7 @@ def mock_post(self, url, **kwargs):
         "choices": [{"message": {"content": json.dumps(content)}}]
     })
 
-from src.main import app
+from services.llm.src.main import app
 
 @pytest.fixture(autouse=True)
 def mock_httpx_post():
@@ -123,10 +123,10 @@ def test_regression_runner(filename, fixture):
     
     # Specific edge case checks
     if "denied_symptom" in filename:
-        subj = data["sections"]["subjective"]
+        subj = data["sections"]["subjective"]["statements"]
         assert any("denies" in s["text"].lower() for s in subj)
         # Ensure it's not in assessment as active
-        asses = data["sections"]["assessment"]
+        asses = data["sections"]["assessment"]["statements"]
         assert not any("chest pain" in a["text"].lower() for a in asses)
         
     if "ambiguous_dose" in filename:

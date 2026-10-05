@@ -63,7 +63,18 @@ export interface SoapStatement {
   confidence?: number;
 }
 
-export type StatementList = SoapStatement[];
+/**
+ * A single SOAP section. Contains either populated statements OR
+ * insufficient_content=true with a reason explaining why the section
+ * has no content (e.g. "Not discussed in this consultation").
+ */
+export interface SoapSection {
+  statements: SoapStatement[];
+  /** True when the transcript contains nothing relevant to this section. */
+  insufficient_content: boolean;
+  /** One-line explanation, required when insufficient_content is true. */
+  reason?: string | null;
+}
 
 export interface SafetyFlag {
   severity: 'low' | 'moderate' | 'high';
@@ -98,10 +109,10 @@ export interface SoapNote {
   };
   generated_at: string;
   sections: {
-    subjective: StatementList;
-    objective: StatementList;
-    assessment: StatementList;
-    plan: StatementList;
+    subjective: SoapSection;
+    objective: SoapSection;
+    assessment: SoapSection;
+    plan: SoapSection;
   };
   medications?: Medication[];
   differential_considerations?: {

@@ -7,6 +7,8 @@ from sqlalchemy import select
 from pydantic import BaseModel
 import asyncio
 import json
+import os
+import redis.asyncio as redis
 from contextlib import asynccontextmanager
 
 from .db import get_db, engine
@@ -18,6 +20,8 @@ async def lifespan(app: FastAPI):
     # Tables are managed by Alembic, NOT SQLAlchemy create_all().
     # Migrations MUST run as a superuser to preserve audit_log immutability.
     yield
+
+redis_client = redis.Redis(host=os.getenv("REDIS_HOST", "redis"), port=6379, decode_responses=True)
 
 app = FastAPI(title="gateway", lifespan=lifespan)
 
@@ -113,8 +117,26 @@ async def generate_note(id: str, req: GenerateNoteReq, db: AsyncSession = Depend
             resp.raise_for_status()
             soap_note = resp.json()
         except Exception as e:
+            # Revert state if LLM fails so the user can retry
+            enc.state = EncounterState.transcribing.value
+            append_audit_log(
+                session=db,
+                encounter_id=str(enc.id),
+                actor="system",
+                action="state_change",
+                before={"state": EncounterState.drafting.value},
+                after={"state": enc.state}
+            )
+            await db.commit()
             raise HTTPException(status_code=500, detail=f"LLM generation failed: {str(e)}")
             
+    # Save transcript to Redis
+    try:
+        ttl = int(os.getenv("TRANSCRIPT_TTL_SECONDS", "3600"))
+        await redis_client.set(f"transcript:{enc.id}", json.dumps(req.segments), ex=ttl)
+    except Exception as e:
+        print(f"Failed to save transcript to Redis: {e}")
+        
     # Save the SOAP note to the database as version 1
     import hashlib
     model_hash = hashlib.sha256(json.dumps(soap_note, sort_keys=True).encode("utf-8")).hexdigest()
@@ -143,6 +165,42 @@ async def generate_note(id: str, req: GenerateNoteReq, db: AsyncSession = Depend
     )
     await db.commit()
     return {"status": "ready"}
+
+@app.get("/api/v1/encounters/{id}")
+async def get_encounter(id: str, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(Encounter).where(Encounter.id == uuid.UUID(id)))
+    enc = result.scalars().first()
+    if not enc:
+        raise HTTPException(status_code=404, detail="Encounter not found")
+        
+    # Get note
+    result_note = await db.execute(
+        select(NoteVersion).where(NoteVersion.encounter_id == uuid.UUID(id)).order_by(NoteVersion.version.desc())
+    )
+    note = result_note.scalars().first()
+    note_json = note.content_jsonb if note else None
+    
+    # Get transcript
+    transcript = []
+    try:
+        ts_data = await redis_client.get(f"transcript:{enc.id}")
+        if ts_data:
+            transcript = json.loads(ts_data)
+            import re
+            for seg in transcript:
+                if isinstance(seg, dict) and "id" in seg:
+                    seg["id"] = re.sub(r"^seg_[^_]+_", "", seg["id"])
+    except Exception as e:
+        print(f"Failed to get transcript from Redis: {e}")
+
+    response_payload = {
+        "id": str(enc.id),
+        "state": enc.state,
+        "note": note_json,
+        "transcript": transcript
+    }
+    print("DEBUG GATEWAY PAYLOAD:", json.dumps(response_payload, indent=2))
+    return response_payload
 
 @app.get("/api/v1/encounters/{id}/note")
 async def get_note(id: str, db: AsyncSession = Depends(get_db)):

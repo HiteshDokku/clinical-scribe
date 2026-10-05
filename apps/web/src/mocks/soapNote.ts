@@ -14,27 +14,32 @@ export const MOCK_SOAP_NOTE: SoapNote = {
   },
   generated_at: new Date().toISOString(),
   sections: {
-    subjective: [
-      {
-        id: 'subj-001',
-        text: 'Patient reports persistent chest tightness for the past 3 days, worsening with exertion.',
-        evidence: ['seg-0012', 'seg-0013'],
-        confidence: 0.94,
-      },
-      {
-        id: 'subj-002',
-        text: 'Denies any radiating pain to the arms or jaw.',
-        evidence: ['seg-0014'],
-        confidence: 0.91,
-      },
-      {
-        id: 'subj-003',
-        text: 'Reports intermittent dizziness upon standing, especially in the morning.',
-        evidence: ['seg-0018'],
-        confidence: 0.88,
-      },
-    ],
-    objective: [
+    subjective: {
+      statements: [
+        {
+          id: 'subj-001',
+          text: 'Patient reports persistent chest tightness for the past 3 days, worsening with exertion.',
+          evidence: ['seg-0012', 'seg-0013'],
+          confidence: 0.94,
+        },
+        {
+          id: 'subj-002',
+          text: 'Denies any radiating pain to the arms or jaw.',
+          evidence: ['seg-0014'],
+          confidence: 0.91,
+        },
+        {
+          id: 'subj-003',
+          text: 'Reports intermittent dizziness upon standing, especially in the morning.',
+          evidence: ['seg-0018'],
+          confidence: 0.88,
+        },
+      ],
+      insufficient_content: false,
+      reason: null,
+    },
+    objective: {
+      statements: [
       {
         id: 'obj-001',
         text: 'Blood pressure 148/92 mmHg, heart rate 88 bpm, respiratory rate 18/min.',
@@ -53,8 +58,12 @@ export const MOCK_SOAP_NOTE: SoapNote = {
         evidence: ['seg-0025'],
         confidence: 0.72,
       },
-    ],
-    assessment: [
+      ],
+      insufficient_content: false,
+      reason: null,
+    },
+    assessment: {
+      statements: [
       {
         id: 'assess-001',
         text: 'Hypertensive urgency with borderline Stage 2 hypertension.',
@@ -73,8 +82,12 @@ export const MOCK_SOAP_NOTE: SoapNote = {
         evidence: ['seg-0018'],
         confidence: 0.42,
       },
-    ],
-    plan: [
+      ],
+      insufficient_content: false,
+      reason: null,
+    },
+    plan: {
+      statements: [
       {
         id: 'plan-001',
         text: 'Start Lisinopril 10mg daily for blood pressure management.',
@@ -99,7 +112,10 @@ export const MOCK_SOAP_NOTE: SoapNote = {
         evidence: ['seg-0035'],
         confidence: 0.87,
       },
-    ],
+      ],
+      insufficient_content: false,
+      reason: null,
+    },
   },
   medications: [
     {

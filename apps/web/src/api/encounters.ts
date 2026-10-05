@@ -27,10 +27,15 @@ export async function generateNote(encounterId: string, segments: TranscriptEven
   return res.json() as Promise<{ status: string }>;
 }
 
-export async function getNote(encounterId: string): Promise<SoapNote> {
-  const res = await fetch(`${BASE}/encounters/${encounterId}/note`);
-  if (!res.ok) throw new Error(`Failed to get note: ${res.status}`);
-  return res.json() as Promise<SoapNote>;
+export async function getEncounter(encounterId: string): Promise<{
+  id: string;
+  state: string;
+  note: SoapNote;
+  transcript: TranscriptEvent[];
+}> {
+  const res = await fetch(`${BASE}/encounters/${encounterId}`);
+  if (!res.ok) throw new Error(`Failed to get encounter: ${res.status}`);
+  return res.json();
 }
 
 export async function signNote(encounterId: string, editedSections?: Record<string, string>): Promise<{ status: string }> {

@@ -2,7 +2,7 @@ import { useState, useCallback, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { SoapReviewScreen } from '@/components/review/SoapReviewScreen';
-import { getNote, signNote } from '@/api/encounters';
+import { getEncounter, signNote } from '@/api/encounters';
 
 export function ReviewPage() {
   const { id } = useParams<{ id: string }>();
@@ -12,13 +12,17 @@ export function ReviewPage() {
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
+  const [transcript, setTranscript] = useState<any[]>([]);
+
   useEffect(() => {
     if (!id) return;
     let mounted = true;
-    getNote(id)
-      .then((note) => {
+    getEncounter(id)
+      .then((data) => {
         if (mounted) {
-          setLiveNote(note);
+          console.log("DEBUG FRONTEND PAYLOAD:", data);
+          setLiveNote(data.note);
+          setTranscript(data.transcript || []);
           setIsLoading(false);
         }
       })
@@ -32,6 +36,12 @@ export function ReviewPage() {
   }, [id]);
 
   const soapNote = liveNote;
+  
+  // Extract transcript and build the evidence map
+  const evidenceMap: Record<string, string> = {};
+  for (const segment of transcript) {
+    evidenceMap[segment.id] = segment.text;
+  }
 
   const handleSign = useCallback(async (editedSections: Record<string, string>) => {
     if (!id) return;
@@ -96,7 +106,7 @@ export function ReviewPage() {
           >
             <SoapReviewScreen
               soapNote={soapNote}
-              evidenceMap={{}} // TODO: fetch real evidence map if needed
+              evidenceMap={evidenceMap}
               onSign={handleSign}
             />
           </motion.div>

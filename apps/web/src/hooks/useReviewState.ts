@@ -69,8 +69,10 @@ export function useReviewState(soapNote: SoapNote | null): UseReviewStateReturn 
     const editedStatementIds = new Set<string>();
     for (const sec of ['subjective', 'objective', 'assessment', 'plan']) {
       if (sectionEdits[sec] !== undefined) {
-        const statements = soapNote.sections[sec as keyof typeof soapNote.sections] || [];
-        statements.forEach(s => editedStatementIds.add(s.id));
+        const section = soapNote.sections[sec as keyof typeof soapNote.sections];
+        if (section && section.statements) {
+          section.statements.forEach(s => editedStatementIds.add(s.id));
+        }
       }
     }
 

@@ -72,6 +72,7 @@ services:
       - LLM_BACKEND=${LLM_BACKEND}
       - LLM_MODEL_NAME=${LLM_MODEL_NAME}
       - LLM_QUANT=${LLM_QUANT}
+      - USE_MOCK_LLM=${USE_MOCK_LLM:-false}
     # NOTE: GPU device reservation removed for scaffold — model loading added at M3.
     # To re-enable GPU in prod, add:
     #   deploy:
