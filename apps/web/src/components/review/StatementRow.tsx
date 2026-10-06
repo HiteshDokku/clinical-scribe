@@ -69,6 +69,7 @@ export function StatementRow({
               onClick={handleClick}
               className="flex-1 text-left group"
               aria-expanded={isEvidenceOpen}
+              disabled={!statement.evidence || statement.evidence.length === 0}
             >
               <div className="flex items-center gap-2 mb-1.5">
                 <span className="badge-ai text-[10px]">AI-drafted</span>
@@ -95,11 +96,18 @@ export function StatementRow({
                 )}
               </div>
               <p className="text-sm text-gray-200 leading-relaxed">{statement.text}</p>
-              <p className="text-[10px] text-gray-500 mt-2 group-hover:text-clinical-400 transition-colors">
-                {isEvidenceOpen ? '▼ Hide evidence' : '▶ Click to view evidence'}
-                {' · '}
-                {statement.evidence.length} span{statement.evidence.length !== 1 ? 's' : ''}
-              </p>
+              
+              {statement.evidence && statement.evidence.length > 0 ? (
+                <p className="text-[10px] text-gray-500 mt-2 group-hover:text-clinical-400 transition-colors">
+                  {isEvidenceOpen ? '▼ Hide evidence' : '▶ Click to view evidence'}
+                  {' · '}
+                  {statement.evidence.length} span{statement.evidence.length !== 1 ? 's' : ''}
+                </p>
+              ) : (
+                <div className="mt-2 text-xs text-clinical-300/80 bg-clinical-900/20 p-2 rounded border border-clinical-700/30">
+                  <span className="font-medium text-clinical-400">AI Reasoning:</span> {statement.reasoning_basis}
+                </div>
+              )}
             </button>
 
             {/* Review action */}
@@ -121,11 +129,13 @@ export function StatementRow({
             )}
           </div>
 
-          <EvidencePanel
-            evidenceIds={statement.evidence}
-            evidenceMap={evidenceMap}
-            isOpen={isEvidenceOpen}
-          />
+          {statement.evidence && statement.evidence.length > 0 && (
+            <EvidencePanel
+              evidenceIds={statement.evidence}
+              evidenceMap={evidenceMap}
+              isOpen={isEvidenceOpen}
+            />
+          )}
         </div>
       </motion.div>
 

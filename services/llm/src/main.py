@@ -15,11 +15,12 @@ from jinja2 import Environment, FileSystemLoader
 from packages.contracts.python.soap_note import (
     SoapNote,
     SoapSection,
+    AssessmentSection,
     Model as SoapNoteModel,
     Grounding,
     Sections,
 )
-from .schemas import ASRSegment, ExtractedEntities, SoapNoteLLMOutput
+from .schemas import ASRSegment, ExtractedEntities, DiagnoseLLMOutput, PrescribeLLMOutput
 
 app = FastAPI(title="llm")
 
@@ -36,9 +37,14 @@ template_dir = os.path.join(os.path.dirname(__file__), "../prompts")
 env = Environment(loader=FileSystemLoader(template_dir))
 
 
-class GenerateRequest(BaseModel):
+class ExtractDiagnoseRequest(BaseModel):
     encounter_id: str
     segments: list[ASRSegment]
+
+class PrescribeRequest(BaseModel):
+    encounter_id: str
+    confirmed_diagnosis: str
+    entities: list[dict]
 
 
 class GroundingFailure(Exception):
@@ -88,7 +94,7 @@ def call_llm(system_prompt: str, response_model: type[BaseModel]) -> dict:
 
 
 def validate_grounding(
-    soap_output: SoapNoteLLMOutput,
+    soap_output: DiagnoseLLMOutput,
     valid_segment_ids: set[str],
 ) -> tuple[list[str], list[str]]:
     """Verify every cited evidence ID actually exists in the transcript.
@@ -100,32 +106,37 @@ def validate_grounding(
     ungrounded_ids: list[str] = []
     invalid_ids: list[str] = []
 
-    for section_name in ("subjective", "objective", "assessment", "plan"):
+    for section_name in ("subjective", "objective"):
         section: SoapSection = getattr(soap_output.sections, section_name)
-        for stmt in section.statements:
+        for stmt in section.statements.root:
             bad = [eid for eid in stmt.evidence if eid not in valid_segment_ids]
             if bad:
                 ungrounded_ids.append(stmt.id)
                 invalid_ids.extend(bad)
 
+    # For assessment, evidence is not strictly required if statement_type == "inferred_diagnosis"
+    if hasattr(soap_output.sections, "assessment"):
+        assessment = soap_output.sections.assessment
+        for stmt in assessment.statements.root:
+            if getattr(stmt.statement_type, "value", stmt.statement_type) == "grounded":
+                bad = [eid for eid in (stmt.evidence or []) if eid not in valid_segment_ids]
+                if bad:
+                    ungrounded_ids.append(stmt.id)
+                    invalid_ids.extend(bad)
+
     return ungrounded_ids, invalid_ids
 
 
-@app.post("/generate_note", response_model=SoapNote)
-def generate_note(req: GenerateRequest) -> SoapNote:
+@app.post("/extract_and_diagnose")
+def extract_and_diagnose(req: ExtractDiagnoseRequest) -> dict:
     if not req.segments:
         raise HTTPException(
             status_code=400,
-            detail="No transcript segments provided. Cannot generate SOAP note.",
+            detail="No transcript segments provided.",
         )
 
     valid_segment_ids = {seg.id for seg in req.segments}
-    logger.info(
-        "generate_note: encounter=%s segment_count=%d",
-        req.encounter_id,
-        len(req.segments),
-    )
-
+    
     import re
     def extract_raw_id(raw: str) -> str:
         return re.sub(r"^seg_[^_]+_", "", raw)
@@ -139,81 +150,47 @@ def generate_note(req: GenerateRequest) -> SoapNote:
         s_dump["id"] = str(i)
         mapped_segments.append(s_dump)
 
-    # 1. Extract
     extract_template = env.get_template("extract_v1.j2")
-    extract_prompt = extract_template.render(
-        segments=mapped_segments
-    )
-
+    extract_prompt = extract_template.render(segments=mapped_segments)
     entities_data = call_llm(extract_prompt, ExtractedEntities)
     extracted = ExtractedEntities.model_validate(entities_data)
 
-    # 2. Compose (with retry on grounding failure)
-    compose_template = env.get_template("compose_v1.j2")
-    compose_prompt = compose_template.render(
+    diagnose_template = env.get_template("diagnose_v1.j2")
+    diagnose_prompt = diagnose_template.render(
         entities=[e.model_dump() for e in extracted.entities]
     )
 
-    soap_output: SoapNoteLLMOutput | None = None
+    diagnose_output: DiagnoseLLMOutput | None = None
     ungrounded_stmt_ids: list[str] = []
     last_invalid_ids: list[str] = []
 
     for attempt in range(MAX_GENERATION_ATTEMPTS):
-        soap_data = call_llm(compose_prompt, SoapNoteLLMOutput)
-        soap_output = SoapNoteLLMOutput.model_validate(soap_data)
-
-        ungrounded_stmt_ids, last_invalid_ids = validate_grounding(
-            soap_output, short_valid_ids
-        )
-
+        soap_data = call_llm(diagnose_prompt, DiagnoseLLMOutput)
+        diagnose_output = DiagnoseLLMOutput.model_validate(soap_data)
+        ungrounded_stmt_ids, last_invalid_ids = validate_grounding(diagnose_output, short_valid_ids)
         if not last_invalid_ids:
-            # All evidence IDs are valid
             break
 
-        logger.warning(
-            "Grounding failure attempt=%d invalid_ids=%s",
-            attempt + 1,
-            last_invalid_ids,
-        )
+    assert diagnose_output is not None
+    return {
+        "entities": [e.model_dump() for e in extracted.entities],
+        "diagnosis": diagnose_output.model_dump(),
+        "id_map": id_map,
+        "ungrounded_ids": ungrounded_stmt_ids
+    }
 
-    # After retries, if still invalid: keep the output but mark the
-    # offending statements as ungrounded so the review UI can flag them.
-    assert soap_output is not None
-
-    # 3. Compute grounding stats and remap IDs back to real UUIDs
-    statements_total = 0
-    for section_name in ("subjective", "objective", "assessment", "plan"):
-        section: SoapSection = getattr(soap_output.sections, section_name)
-        statements_total += len(section.statements)
-        for stmt in section.statements:
-            stmt.evidence = [id_map.get(eid, eid) for eid in stmt.evidence]
-
-    grounding = Grounding(
-        statements_total=statements_total,
-        ungrounded=len(ungrounded_stmt_ids),
-        ungrounded_ids=ungrounded_stmt_ids,
+@app.post("/prescribe")
+def prescribe(req: PrescribeRequest) -> dict:
+    prescribe_template = env.get_template("prescribe_v1.j2")
+    prescribe_prompt = prescribe_template.render(
+        confirmed_diagnosis=req.confirmed_diagnosis,
+        entities=req.entities
     )
 
-    note = SoapNote(
-        encounter_id=req.encounter_id,
-        model=SoapNoteModel(
-            name="llama-3-8b-instruct",
-            quant=LLM_QUANT,
-            prompt_version="v1",
-        ),
-        generated_at=datetime.now(timezone.utc),
-        sections=Sections(
-            subjective=soap_output.sections.subjective,
-            objective=soap_output.sections.objective,
-            assessment=soap_output.sections.assessment,
-            plan=soap_output.sections.plan,
-        ),
-        medications=soap_output.medications or [],
-        differential_considerations=soap_output.differential_considerations or [],
-        safety_flags=[],
-        grounding=grounding,
-    )
-    return note
+    prescribe_data = call_llm(prescribe_prompt, PrescribeLLMOutput)
+    prescribe_output = PrescribeLLMOutput.model_validate(prescribe_data)
+    
+    return prescribe_output.model_dump()
 
 
 @app.get("/healthz")

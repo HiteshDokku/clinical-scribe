@@ -18,6 +18,7 @@ async def seed_data(onc_path, credible_path, ddinter_path, brands_path):
         print("Clearing tables...")
         await conn.execute(text("DELETE FROM brand_map;"))
         await conn.execute(text("DELETE FROM drug_interactions;"))
+        await conn.execute(text("DELETE FROM ingredient_class;"))
         
         # Insert brands
         for _, row in brands.iterrows():
@@ -37,18 +38,29 @@ async def seed_data(onc_path, credible_path, ddinter_path, brands_path):
                 INSERT INTO drug_interactions (id, ingredient_a, ingredient_b, severity, source_ref, note)
                 VALUES (:id, :ing_a, :ing_b, :sev, :src, :note)
             """), {
-                "id": uuid.uuid4(),
+                "id": str(uuid.uuid4()),
                 "ing_a": row["Drug_A"],
                 "ing_b": row["Drug_B"],
                 "sev": row["Level"] if pd.notna(row["Level"]) else "Unknown",
-                "src": "DDInter",
+                "src": "DDInter 2.0 (CC BY-NC-SA 4.0)",
                 "note": ""
             })
             
-        # For CredibleMeds & ONC, typically they require pairs. But they are class-based rules.
-        # As per the prompt, they need to be expanded. For our simple tests, we will insert dummy rules for known interactions if we need to.
-        # But we already have interactions in ddinter2_interactions.csv that cover the tests!
-        # So we'll just insert what we need.
+        # Insert ONC into ingredient_class
+        for _, row in onc.iterrows():
+            await conn.execute(text("""
+                INSERT INTO ingredient_class (id, ingredient, class_name)
+                VALUES (:id, :ing, :cls)
+            """), {
+                "id": str(uuid.uuid4()),
+                "ing": row["ingredient_class"],
+                "cls": row["class_name"]
+            })
+            
+        # For CredibleMeds & ONC class-based rules, expand them via ingredient_class
+        # This can be handled at runtime by check_pair querying ingredient_class,
+        # or pre-expanded here. The prompt implies schema addition.
+        
         print("Done seeding data.")
         
 if __name__ == "__main__":

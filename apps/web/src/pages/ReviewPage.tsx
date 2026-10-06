@@ -2,15 +2,17 @@ import { useState, useCallback, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { SoapReviewScreen } from '@/components/review/SoapReviewScreen';
-import { getEncounter, signNote } from '@/api/encounters';
+import { getEncounter, signNote, confirmDiagnosis } from '@/api/encounters';
+import type { ReviewPhase } from '@/hooks/useReviewState';
 
 export function ReviewPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const [isSigned, setIsSigned] = useState(false);
+  const [encounterState, setEncounterState] = useState<string>('');
   const [liveNote, setLiveNote] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const [transcript, setTranscript] = useState<any[]>([]);
 
@@ -22,6 +24,7 @@ export function ReviewPage() {
         if (mounted) {
           console.log("DEBUG FRONTEND PAYLOAD:", data);
           setLiveNote(data.note);
+          setEncounterState(data.state);
           setTranscript(data.transcript || []);
           setIsLoading(false);
         }
@@ -45,13 +48,27 @@ export function ReviewPage() {
 
   const handleSign = useCallback(async (editedSections: Record<string, string>) => {
     if (!id) return;
+    setIsSubmitting(true);
     try {
-      await signNote(id, editedSections);
-      setIsSigned(true);
+      if (encounterState === 'diagnosis_review') {
+        const confirmedText = editedSections.assessment || soapNote?.sections.assessment.statements.map((s: any) => s.text).join('\n') || '';
+        await confirmDiagnosis(id, confirmedText);
+        // fetch encounter again to get the new state
+        const data = await getEncounter(id);
+        setLiveNote(data.note);
+        setEncounterState(data.state);
+      } else {
+        await signNote(id, editedSections);
+        setEncounterState('signed');
+      }
     } catch (err) {
-      console.error('Failed to sign:', err);
+      console.error('Failed to process:', err);
+    } finally {
+      setIsSubmitting(false);
     }
-  }, [id]);
+  }, [id, encounterState, soapNote]);
+
+  const reviewPhase: ReviewPhase = encounterState === 'diagnosis_review' ? 'diagnosis' : encounterState === 'medication_review' ? 'medication' : 'all';
 
   return (
     <div className="min-h-screen p-4 md:p-8 max-w-3xl mx-auto">
@@ -97,17 +114,20 @@ export function ReviewPage() {
           >
             <p>{error}</p>
           </motion.div>
-        ) : !isSigned ? (
+        ) : encounterState !== 'signed' ? (
           <motion.div
-            key="review"
+            key={`review-${encounterState}`}
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -20 }}
           >
+            <div data-testid="debug-phase" className="text-white">PHASE: {reviewPhase} STATE: {encounterState}</div>
             <SoapReviewScreen
               soapNote={soapNote}
               evidenceMap={evidenceMap}
               onSign={handleSign}
+              phase={reviewPhase}
+              isSubmitting={isSubmitting}
             />
           </motion.div>
         ) : (

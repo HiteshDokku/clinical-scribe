@@ -94,7 +94,11 @@ async def generate_note(id: str, req: GenerateNoteReq, db: AsyncSession = Depend
         raise HTTPException(status_code=400, detail="No transcript segments provided. Cannot generate SOAP note.")
         
     before_state = enc.state
-    enc.state = EncounterState.drafting.value
+    # Handle legacy active states gracefully by logging and routing to new state
+    if before_state in [EncounterState.drafting.value, EncounterState.ready.value]:
+        print(f"WARNING: Migrating encounter {enc.id} from legacy state {before_state}")
+        
+    enc.state = EncounterState.drafting_diagnosis.value
     enc.ended_at = datetime.now(timezone.utc)
     
     append_audit_log(
@@ -120,12 +124,56 @@ async def generate_note(id: str, req: GenerateNoteReq, db: AsyncSession = Depend
     # Call the LLM service synchronously
     async with httpx.AsyncClient(timeout=120.0) as client:
         try:
-            resp = await client.post("http://llm:8080/generate_note", json={
+            resp = await client.post("http://llm:8080/extract_and_diagnose", json={
                 "encounter_id": id,
                 "segments": llm_segments
             })
             resp.raise_for_status()
-            soap_note = resp.json()
+            res_json = resp.json()
+            entities = res_json["entities"]
+            diagnose_output = res_json["diagnosis"]
+            id_map = res_json.get("id_map", {})
+            
+            # Map diagnose_output evidence to actual IDs
+            for sec_key in ["subjective", "objective", "assessment"]:
+                sec = diagnose_output.get("sections", {}).get(sec_key, {})
+                for stmt in sec.get("statements", []):
+                    stmt["evidence"] = [id_map.get(str(eid), str(eid)) for eid in stmt.get("evidence", [])]
+
+            
+            # Override LLM risk assessment deterministically via Safety Service
+            symptoms = [e["verbatim"] for e in entities if e["category"] in ("symptom_active", "symptom_denied", "vital", "other")]
+            for stmt in diagnose_output["sections"].get("assessment", {}).get("statements", []):
+                if stmt.get("statement_type") == "inferred_diagnosis":
+                    # Call safety service
+                    try:
+                        async with httpx.AsyncClient(timeout=10.0) as s_client:
+                            s_resp = await s_client.post("http://safety:8002/api/v1/safety/classify_risk", json={
+                                "proposed_condition": stmt.get("text", ""),
+                                "symptoms": symptoms
+                            })
+                            if s_resp.status_code == 200:
+                                stmt["risk_tier"] = s_resp.json()["risk_tier"]
+                            else:
+                                stmt["risk_tier"] = "requires_review" # safe default
+                    except Exception as exc:
+                        stmt["risk_tier"] = "requires_review"
+            
+            # Form a partial note with just diagnosis sections
+            partial_note = {
+                "encounter_id": id,
+                "model": {"name": "llama-3-8b-instruct", "quant": "unknown", "prompt_version": "v1"},
+                "sections": {
+                    "subjective": diagnose_output["sections"]["subjective"],
+                    "objective": diagnose_output["sections"]["objective"],
+                    "assessment": diagnose_output["sections"]["assessment"],
+                    "plan": {"statements": [], "insufficient_content": True, "reason": "Pending"}
+                },
+                "differential_considerations": diagnose_output.get("differential_considerations", []),
+                "medications": [],
+                "safety_flags": [],
+                "grounding": {"statements_total": 0, "ungrounded": 0, "ungrounded_ids": []}
+            }
         except Exception as e:
             # Revert state if LLM fails so the user can retry
             enc.state = EncounterState.transcribing.value
@@ -134,47 +182,152 @@ async def generate_note(id: str, req: GenerateNoteReq, db: AsyncSession = Depend
                 encounter_id=str(enc.id),
                 actor="system",
                 action="state_change",
-                before={"state": EncounterState.drafting.value},
+                before={"state": EncounterState.drafting_diagnosis.value},
                 after={"state": enc.state}
             )
             await db.commit()
             raise HTTPException(status_code=500, detail=f"LLM generation failed: {str(e)}")
             
-    # Save transcript to Redis
+    # Save transcript and entities to Redis
     try:
         ttl = int(os.getenv("TRANSCRIPT_TTL_SECONDS", "3600"))
         await redis_client.set(f"transcript:{enc.id}", json.dumps(req.segments), ex=ttl)
+        await redis_client.set(f"entities:{enc.id}", json.dumps(entities), ex=ttl)
+        await redis_client.set(f"id_map:{enc.id}", json.dumps(id_map), ex=ttl)
     except Exception as e:
-        print(f"Failed to save transcript to Redis: {e}")
+        print(f"Failed to save data to Redis: {e}")
         
-    # Save the SOAP note to the database as version 1
+    # Save the partial SOAP note to the database as version 1
     import hashlib
-    model_hash = hashlib.sha256(json.dumps(soap_note, sort_keys=True).encode("utf-8")).hexdigest()
+    model_hash = hashlib.sha256(json.dumps(partial_note, sort_keys=True).encode("utf-8")).hexdigest()
     
     note_ver = NoteVersion(
         id=uuid.uuid4(),
         encounter_id=enc.id,
         version=1,
         source="ai",
-        content_jsonb=soap_note,
-        model_name=soap_note.get("model", {}).get("name", "unknown"),
+        content_jsonb=partial_note,
+        model_name="llama-3-8b-instruct",
         model_hash=model_hash,
-        prompt_version=soap_note.get("model", {}).get("prompt_version", "unknown"),
+        prompt_version="v1",
         created_at=datetime.now(timezone.utc)
     )
     db.add(note_ver)
     
-    enc.state = EncounterState.ready.value
+    enc.state = EncounterState.diagnosis_review.value
     append_audit_log(
         session=db,
         encounter_id=str(enc.id),
         actor="system",
         action="state_change",
-        before={"state": EncounterState.drafting.value},
+        before={"state": EncounterState.drafting_diagnosis.value},
         after={"state": enc.state}
     )
     await db.commit()
-    return {"status": "ready"}
+    return {"status": "diagnosis_review"}
+            
+
+
+class ConfirmDiagnosisReq(BaseModel):
+    confirmed_diagnosis: str
+
+@app.post("/api/v1/encounters/{id}/confirm-diagnosis")
+async def confirm_diagnosis(id: str, req: ConfirmDiagnosisReq, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(Encounter).where(Encounter.id == uuid.UUID(id)))
+    enc = result.scalars().first()
+    if not enc:
+        raise HTTPException(status_code=404, detail="Encounter not found")
+        
+    if enc.state != EncounterState.diagnosis_review.value:
+        raise HTTPException(status_code=400, detail="Cannot confirm diagnosis unless in diagnosis_review state")
+        
+    before_state = enc.state
+    enc.state = EncounterState.drafting_medications.value
+    append_audit_log(db, str(enc.id), enc.clinician_id, "state_change", before={"state": before_state}, after={"state": enc.state})
+    await db.commit()
+    
+    # Get entities and id_map
+    entities = []
+    id_map = {}
+    try:
+        e_data = await redis_client.get(f"entities:{enc.id}")
+        if e_data: entities = json.loads(e_data)
+        m_data = await redis_client.get(f"id_map:{enc.id}")
+        if m_data: id_map = json.loads(m_data)
+    except Exception:
+        pass
+
+    # Call LLM prescribe
+    async with httpx.AsyncClient(timeout=120.0) as client:
+        try:
+            resp = await client.post("http://llm:8080/prescribe", json={
+                "encounter_id": id,
+                "confirmed_diagnosis": req.confirmed_diagnosis,
+                "entities": entities
+            })
+            resp.raise_for_status()
+            prescribe_output = resp.json()
+            
+            # Remap prescribe_output evidence
+            for stmt in prescribe_output.get("sections", {}).get("plan", {}).get("statements", []):
+                stmt["evidence"] = [id_map.get(str(eid), str(eid)) for eid in stmt.get("evidence", [])]
+            for med in prescribe_output.get("medications", []):
+                med["evidence"] = [id_map.get(str(eid), str(eid)) for eid in med.get("evidence", [])]
+
+        except Exception as e:
+            # Revert state
+            enc.state = EncounterState.diagnosis_review.value
+            append_audit_log(db, str(enc.id), "system", "state_change", before={"state": EncounterState.drafting_medications.value}, after={"state": enc.state})
+            await db.commit()
+            raise HTTPException(status_code=500, detail=f"LLM generation failed: {str(e)}")
+
+    # Resolve medications and enforce high_risk_class manual confirmation
+    medications = prescribe_output.get("medications") or []
+    async with httpx.AsyncClient(timeout=10.0) as s_client:
+        for med in medications:
+            try:
+                s_resp = await s_client.post("http://safety:8002/api/v1/safety/resolve", json={"mention": med["verbatim"]})
+                if s_resp.status_code == 200:
+                    s_data = s_resp.json()
+                    med["ingredient_id"] = s_data.get("ingredient")
+                    med["needs_manual_confirmation"] = s_data.get("needs_manual_confirmation", True)
+                else:
+                    med["needs_manual_confirmation"] = True
+            except Exception:
+                med["needs_manual_confirmation"] = True
+
+    # Combine with previous NoteVersion
+    result_note = await db.execute(
+        select(NoteVersion).where(NoteVersion.encounter_id == uuid.UUID(id)).order_by(NoteVersion.version.desc())
+    )
+    old_note_ver = result_note.scalars().first()
+    if not old_note_ver:
+        raise HTTPException(status_code=500, detail="Missing diagnosis note version")
+
+    combined_note = old_note_ver.content_jsonb.copy()
+    combined_note["sections"]["plan"] = prescribe_output["sections"]["plan"]
+    combined_note["medications"] = medications
+
+    import hashlib
+    model_hash = hashlib.sha256(json.dumps(combined_note, sort_keys=True).encode("utf-8")).hexdigest()
+    note_ver = NoteVersion(
+        id=uuid.uuid4(),
+        encounter_id=enc.id,
+        version=old_note_ver.version + 1,
+        source="ai",
+        content_jsonb=combined_note,
+        model_name="llama-3-8b-instruct",
+        model_hash=model_hash,
+        prompt_version="v1",
+        created_at=datetime.now(timezone.utc)
+    )
+    db.add(note_ver)
+
+    enc.state = EncounterState.medication_review.value
+    append_audit_log(db, str(enc.id), "system", "state_change", before={"state": EncounterState.drafting_medications.value}, after={"state": enc.state})
+    await db.commit()
+    
+    return {"status": "medication_review"}
 
 @app.get("/api/v1/encounters/{id}")
 async def get_encounter(id: str, db: AsyncSession = Depends(get_db)):
@@ -229,8 +382,8 @@ async def patch_note(id: str, req: PatchNoteReq, db: AsyncSession = Depends(get_
     if not enc:
         raise HTTPException(status_code=404, detail="Encounter not found")
         
-    if enc.state != EncounterState.ready.value:
-        raise HTTPException(status_code=400, detail="Note can only be edited in ready state")
+    if enc.state not in [EncounterState.diagnosis_review.value, EncounterState.medication_review.value]:
+        raise HTTPException(status_code=400, detail="Note can only be edited in review states")
         
     # In a real app, we would load the latest NoteVersion, create a new one, etc.
     # Here we just log the audit trail as required.
@@ -252,8 +405,8 @@ async def sign_note(id: str, db: AsyncSession = Depends(get_db)):
     if not enc:
         raise HTTPException(status_code=404, detail="Encounter not found")
         
-    if enc.state != EncounterState.ready.value:
-        raise HTTPException(status_code=400, detail="Cannot sign unless in ready state")
+    if enc.state != EncounterState.medication_review.value:
+        raise HTTPException(status_code=400, detail="Cannot sign unless in medication_review state")
         
     before_state = enc.state
     enc.state = EncounterState.signed.value

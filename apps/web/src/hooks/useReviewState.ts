@@ -17,7 +17,9 @@ interface UseReviewStateReturn {
  * Sign is only enabled when all sections are approved, all ungrounded statements in non-edited sections are confirmed,
  * and all safety flags in non-edited medications section are individually acknowledged.
  */
-export function useReviewState(soapNote: SoapNote | null): UseReviewStateReturn {
+export type ReviewPhase = 'diagnosis' | 'medication' | 'all';
+
+export function useReviewState(soapNote: SoapNote | null, phase: ReviewPhase = 'all'): UseReviewStateReturn {
   const [statementReviews, setStatementReviews] = useState<Record<string, boolean>>({});
   const [flagAcknowledgments, setFlagAcknowledgments] = useState<Record<string, boolean>>({});
   const [sectionApprovals, setSectionApprovals] = useState<Record<string, boolean>>({});
@@ -53,10 +55,19 @@ export function useReviewState(soapNote: SoapNote | null): UseReviewStateReturn 
 
     const reasons: string[] = [];
     
-    // Check section approvals
-    const sections = ['subjective', 'objective', 'assessment', 'plan'];
-    if (soapNote.medications && soapNote.medications.length > 0) {
-      sections.push('medications');
+    let sections: string[] = [];
+    if (phase === 'diagnosis') {
+      sections = ['subjective', 'objective', 'assessment'];
+    } else if (phase === 'medication') {
+      sections = ['plan'];
+      if (soapNote.medications && soapNote.medications.length > 0) {
+        sections.push('medications');
+      }
+    } else {
+      sections = ['subjective', 'objective', 'assessment', 'plan'];
+      if (soapNote.medications && soapNote.medications.length > 0) {
+        sections.push('medications');
+      }
     }
     
     for (const sec of sections) {
@@ -68,7 +79,7 @@ export function useReviewState(soapNote: SoapNote | null): UseReviewStateReturn 
     // Identify statements that belong to edited sections, because they shouldn't block
     const editedStatementIds = new Set<string>();
     for (const sec of ['subjective', 'objective', 'assessment', 'plan']) {
-      if (sectionEdits[sec] !== undefined) {
+      if (sectionEdits[sec] !== undefined && sections.includes(sec)) {
         const section = soapNote.sections[sec as keyof typeof soapNote.sections];
         if (section && section.statements) {
           section.statements.forEach(s => editedStatementIds.add(s.id));
@@ -101,7 +112,7 @@ export function useReviewState(soapNote: SoapNote | null): UseReviewStateReturn 
     }
 
     return { canSign: reasons.length === 0, blockingReasons: reasons };
-  }, [soapNote, statementReviews, flagAcknowledgments, sectionApprovals, sectionEdits]);
+  }, [soapNote, statementReviews, flagAcknowledgments, sectionApprovals, sectionEdits, phase]);
 
   const reviewState: ReviewState = {
     statementReviews,

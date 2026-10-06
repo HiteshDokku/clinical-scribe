@@ -38,6 +38,16 @@ export async function getEncounter(encounterId: string): Promise<{
   return res.json();
 }
 
+export async function confirmDiagnosis(encounterId: string, confirmedDiagnosis: string): Promise<{ status: string }> {
+  const res = await fetch(`${BASE}/encounters/${encounterId}/confirm-diagnosis`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ confirmed_diagnosis: confirmedDiagnosis }),
+  });
+  if (!res.ok) throw new Error(`Failed to confirm diagnosis: ${res.status}`);
+  return res.json() as Promise<{ status: string }>;
+}
+
 export async function signNote(encounterId: string, editedSections?: Record<string, string>): Promise<{ status: string }> {
   const res = await fetch(`${BASE}/encounters/${encounterId}/sign`, {
     method: 'POST',

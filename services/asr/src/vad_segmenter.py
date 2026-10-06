@@ -5,7 +5,7 @@ from .vad import VADGater
 class VadSegmenter:
     def __init__(self):
         self.vad_gater = VADGater()
-        self.silence_timeout_ms = int(os.getenv("UTTERANCE_SILENCE_MS", "400"))
+        self.silence_timeout_ms = int(os.getenv("UTTERANCE_SILENCE_MS", "600"))
         # 1 ms of 16kHz 16-bit PCM mono = 16 samples * 2 bytes = 32 bytes
         self.silence_bytes_threshold = self.silence_timeout_ms * 32
         

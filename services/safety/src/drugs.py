@@ -33,7 +33,7 @@ async def resolve_medication_mention(text_mention: str, session: AsyncSession) -
     exact_result = await session.execute(text(exact_query), {"m": text_mention})
     exact = exact_result.scalar()
     if exact:
-        return exact, False
+        return await _check_high_risk(exact, False, session)
         
     # 2. Exact match against drug_interactions (ingredient_a or ingredient_b)
     exact_int_query = """
@@ -45,7 +45,7 @@ async def resolve_medication_mention(text_mention: str, session: AsyncSession) -
     exact_int_result = await session.execute(text(exact_int_query), {"m": text_mention})
     exact_int = exact_int_result.scalar()
     if exact_int:
-        return exact_int, False
+        return await _check_high_risk(exact_int, False, session)
         
     # 3. Fuzzy match
     all_names = await fetch_all_known_names(session)
@@ -60,10 +60,25 @@ async def resolve_medication_mention(text_mention: str, session: AsyncSession) -
     best_name, score, idx = match
     target_ingredient = all_names[idx][1]
     
-    if score < 85.0:
-        return target_ingredient, True
+    if score < 72.0:
+        return await _check_high_risk(target_ingredient, True, session)
         
-    return target_ingredient, False
+    return await _check_high_risk(target_ingredient, False, session)
+
+async def _check_high_risk(ingredient: str, needs_manual_confirmation: bool, session: AsyncSession) -> Tuple[str, bool]:
+    if needs_manual_confirmation:
+        return ingredient, True
+    
+    query = """
+    SELECT high_risk_class FROM ingredient_class WHERE LOWER(ingredient) = LOWER(:ing) LIMIT 1
+    """
+    result = await session.execute(text(query), {"ing": ingredient})
+    is_high_risk = result.scalar()
+    
+    if is_high_risk:
+        return ingredient, True
+        
+    return ingredient, False
 
 async def check_pair(ingredient_a: str, ingredient_b: str, session: AsyncSession) -> List[dict]:
     """

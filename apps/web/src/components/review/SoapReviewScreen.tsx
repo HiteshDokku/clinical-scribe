@@ -7,10 +7,14 @@ import { MedicationRow } from './MedicationRow';
 import { SignButton } from './SignButton';
 import { useReviewState } from '@/hooks/useReviewState';
 
+import type { ReviewPhase } from '@/hooks/useReviewState';
+
 interface Props {
   soapNote: SoapNote;
   evidenceMap: Record<string, string>;
   onSign: (editedSections: Record<string, string>) => void;
+  phase: ReviewPhase;
+  isSubmitting?: boolean;
 }
 
 type SectionKey = 'subjective' | 'objective' | 'assessment' | 'plan';
@@ -22,7 +26,7 @@ const SECTION_TITLES: Record<SectionKey, string> = {
   plan: 'Plan',
 };
 
-export function SoapReviewScreen({ soapNote, evidenceMap, onSign }: Props) {
+export function SoapReviewScreen({ soapNote, evidenceMap, onSign, phase, isSubmitting = false }: Props) {
   const [editingSection, setEditingSection] = useState<string | null>(null);
   const [draftText, setDraftText] = useState<string>('');
 
@@ -35,7 +39,7 @@ export function SoapReviewScreen({ soapNote, evidenceMap, onSign }: Props) {
     approveSection,
     canSign,
     blockingReasons,
-  } = useReviewState(soapNote);
+  } = useReviewState(soapNote, phase);
 
   const ungroundedIds = new Set(soapNote.grounding.ungrounded_ids);
 
@@ -169,6 +173,7 @@ export function SoapReviewScreen({ soapNote, evidenceMap, onSign }: Props) {
           </div>
         </div>
 
+
         {/* Grounding summary */}
         <div className="flex items-center gap-4 mt-4">
           <div className="glass-card px-3 py-2 text-center">
@@ -200,14 +205,18 @@ export function SoapReviewScreen({ soapNote, evidenceMap, onSign }: Props) {
 
       {/* SOAP Sections */}
       <div className="space-y-4">
-        {renderSection('subjective', soapNote.sections.subjective)}
-        {renderSection('objective', soapNote.sections.objective)}
-        {renderSection('assessment', soapNote.sections.assessment)}
-        {renderSection('plan', soapNote.sections.plan)}
+        {(phase === 'diagnosis' || phase === 'all') && (
+          <>
+            {renderSection('subjective', soapNote.sections.subjective)}
+            {renderSection('objective', soapNote.sections.objective)}
+            {renderSection('assessment', soapNote.sections.assessment)}
+          </>
+        )}
+        {(phase === 'medication' || phase === 'all') && (
+          renderSection('plan', soapNote.sections.plan)
+        )}
       </div>
-
-      {/* Medications */}
-      {soapNote.medications && soapNote.medications.length > 0 && (() => {
+      {(phase === 'medication' || phase === 'all') && soapNote.medications && soapNote.medications.length > 0 && (() => {
         const key = 'medications';
         const isApproved = reviewState.sectionApprovals[key];
         const isEditing = editingSection === key;
@@ -299,6 +308,8 @@ export function SoapReviewScreen({ soapNote, evidenceMap, onSign }: Props) {
         canSign={canSign}
         blockingReasons={blockingReasons}
         onSign={() => onSign(reviewState.sectionEdits)}
+        label={phase === 'diagnosis' ? "Confirm Diagnosis" : "Sign Note"}
+        isSubmitting={isSubmitting}
       />
     </motion.div>
   );

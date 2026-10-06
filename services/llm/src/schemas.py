@@ -35,21 +35,25 @@ class ASRSegment(BaseModel):
 
 from packages.contracts.python.soap_note import (
     SoapSection,
+    AssessmentSection,
     Medication,
     DifferentialConsideration,
 )
 
 
-class SoapNoteSections(BaseModel):
+class DiagnosisSections(BaseModel):
     subjective: SoapSection
     objective: SoapSection
-    assessment: SoapSection
+    assessment: AssessmentSection
+
+class PrescriptionSections(BaseModel):
     plan: SoapSection
 
 
-class SoapNoteLLMOutput(BaseModel):
-    """Shape the LLM is asked to produce. Mirrors Sections but uses the
-    new SoapSection type with insufficient_content support."""
-    sections: SoapNoteSections
-    medications: list[Medication] | None = None
+class DiagnoseLLMOutput(BaseModel):
+    sections: DiagnosisSections
     differential_considerations: list[DifferentialConsideration] | None = None
+
+class PrescribeLLMOutput(BaseModel):
+    sections: PrescriptionSections
+    medications: list[Medication] | None = None

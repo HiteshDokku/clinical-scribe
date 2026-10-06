@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.db import get_db
 from src.drugs import resolve_medication_mention, check_pair
 from src.grounding import verify_grounding
+from src.diagnosis import classify_diagnosis_risk
 
 app = FastAPI(title="safety")
 
@@ -55,3 +56,15 @@ async def check_interaction(req: CheckPairRequest, db: AsyncSession = Depends(ge
 def verify(req: GroundingRequest):
     result = verify_grounding(req.statement, req.evidence_spans, req.transcript_segments)
     return GroundingResponse(is_grounded=result)
+
+class ClassifyRiskReq(BaseModel):
+    proposed_condition: str
+    symptoms: List[str]
+
+class ClassifyRiskResp(BaseModel):
+    risk_tier: str
+
+@app.post("/api/v1/safety/classify_risk", response_model=ClassifyRiskResp)
+def classify_risk(req: ClassifyRiskReq):
+    tier = classify_diagnosis_risk(req.proposed_condition, req.symptoms)
+    return ClassifyRiskResp(risk_tier=tier)

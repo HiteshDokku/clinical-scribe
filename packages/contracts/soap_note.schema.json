@@ -21,8 +21,8 @@
       "properties": {
         "subjective": { "$ref": "#/$defs/soapSection" },
         "objective":  { "$ref": "#/$defs/soapSection" },
-        "assessment": { "$ref": "#/$defs/soapSection" },
-        "plan":       { "$ref": "#/$defs/soapSection" }
+        "assessment": { "$ref": "#/$defs/assessmentSection" },
+        "plan":       { "$ref": "#/$defs/planSection" }
       }
     },
     "medications": {
@@ -91,6 +91,93 @@
           "type": ["string", "null"],
           "description": "One-line explanation of why this section has no content, e.g. 'Not discussed in this consultation'. Required when insufficient_content is true, null otherwise."
         }
+      }
+    },
+    "assessmentSection": {
+      "type": "object",
+      "required": ["statements", "insufficient_content"],
+      "properties": {
+        "statements": { "$ref": "#/$defs/assessmentStatementList" },
+        "insufficient_content": {
+          "type": "boolean",
+          "description": "True when the transcript contains nothing relevant to this section."
+        },
+        "reason": {
+          "type": ["string", "null"],
+          "description": "One-line explanation of why this section has no content."
+        }
+      }
+    },
+    "planSection": {
+      "type": "object",
+      "required": ["statements", "insufficient_content"],
+      "properties": {
+        "statements": { "$ref": "#/$defs/planStatementList" },
+        "insufficient_content": {
+          "type": "boolean",
+          "description": "True when the transcript contains nothing relevant to this section."
+        },
+        "reason": {
+          "type": ["string", "null"],
+          "description": "One-line explanation of why this section has no content."
+        }
+      }
+    },
+    "assessmentStatementList": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "text", "statement_type"],
+        "properties": {
+          "id": { "type": "string" },
+          "text": { "type": "string" },
+          "statement_type": { "enum": ["grounded", "inferred_diagnosis"] },
+          "reasoning_basis": { "type": "string", "minLength": 1 },
+          "risk_tier": { "enum": ["common", "requires_review", "red_flag"] },
+          "evidence": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "confidence": { "type": "number", "minimum": 0, "maximum": 1 }
+        },
+        "allOf": [
+          {
+            "if": { "properties": { "statement_type": { "const": "grounded" } } },
+            "then": { "required": ["evidence"], "properties": { "evidence": { "minItems": 1 } } }
+          },
+          {
+            "if": { "properties": { "statement_type": { "const": "inferred_diagnosis" } } },
+            "then": { "required": ["reasoning_basis", "risk_tier"] }
+          }
+        ]
+      }
+    },
+    "planStatementList": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "text", "statement_type"],
+        "properties": {
+          "id": { "type": "string" },
+          "text": { "type": "string" },
+          "statement_type": { "enum": ["grounded", "inferred_plan"] },
+          "reasoning_basis": { "type": "string", "minLength": 1 },
+          "evidence": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "confidence": { "type": "number", "minimum": 0, "maximum": 1 }
+        },
+        "allOf": [
+          {
+            "if": { "properties": { "statement_type": { "const": "grounded" } } },
+            "then": { "required": ["evidence"], "properties": { "evidence": { "minItems": 1 } } }
+          },
+          {
+            "if": { "properties": { "statement_type": { "const": "inferred_plan" } } },
+            "then": { "required": ["reasoning_basis"], "properties": { "evidence": { "maxItems": 0 } } }
+          }
+        ]
       }
     },
     "statementList": {
