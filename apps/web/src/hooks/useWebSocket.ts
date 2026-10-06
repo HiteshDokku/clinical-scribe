@@ -8,7 +8,6 @@ interface UseWebSocketReturn {
   sendConsent: (value: string) => void;
   sendAudio: (data: ArrayBuffer) => void;
   sendStop: () => void;
-  sendSwap: () => void;
   disconnect: () => void;
 }
 
@@ -43,9 +42,6 @@ export function useWebSocket(): UseWebSocketReturn {
     managerRef.current?.send({ t: 'stop' });
   }, []);
 
-  const sendSwap = useCallback(() => {
-    managerRef.current?.send({ t: 'swap' });
-  }, []);
 
   const disconnect = useCallback(() => {
     managerRef.current?.close();
@@ -53,5 +49,5 @@ export function useWebSocket(): UseWebSocketReturn {
     setIsConnected(false);
   }, []);
 
-  return { isConnected, connect, sendConsent, sendAudio, sendStop, sendSwap, disconnect };
+  return { isConnected, connect, sendConsent, sendAudio, sendStop, disconnect };
 }

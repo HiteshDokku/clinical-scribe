@@ -5,11 +5,7 @@ WORKDIR /app
 # curl is needed by the docker-compose healthcheck, ffmpeg is needed for faster-whisper
 RUN apt-get update && apt-get install -y --no-install-recommends curl ffmpeg git git-lfs \
     && rm -rf /var/lib/apt/lists/*
-
-COPY services/asr/models /models
-
 ENV WHISPER_MODEL=tiny
-
 
 RUN pip install --no-cache-dir uv
 

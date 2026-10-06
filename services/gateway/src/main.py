@@ -107,12 +107,22 @@ async def generate_note(id: str, req: GenerateNoteReq, db: AsyncSession = Depend
     )
     await db.commit()
     
+    # Relabel segments for LLM
+    llm_segments = []
+    for seg in req.segments:
+        s = seg.copy()
+        if s.get("speaker") == "spk_a":
+            s["speaker"] = "clinician"
+        elif s.get("speaker") == "spk_b":
+            s["speaker"] = "patient"
+        llm_segments.append(s)
+
     # Call the LLM service synchronously
     async with httpx.AsyncClient(timeout=120.0) as client:
         try:
             resp = await client.post("http://llm:8080/generate_note", json={
                 "encounter_id": id,
-                "segments": req.segments
+                "segments": llm_segments
             })
             resp.raise_for_status()
             soap_note = resp.json()

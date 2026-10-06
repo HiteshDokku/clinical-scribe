@@ -40,6 +40,7 @@ async def transcribe_ws(websocket: WebSocket):
             return
 
     from .vad_segmenter import VadSegmenter
+    from .vad_segmenter import VadSegmenter
     import time
     
     vad_segmenter = VadSegmenter()
@@ -81,28 +82,28 @@ async def transcribe_ws(websocket: WebSocket):
                         partial_task.cancel()
                     
                     if utterance_end_ms > utterance_start_ms:
-                        # Transcription without diarization
-                        events = await asyncio.to_thread(
-                            transcriber.transcribe,
-                            final_audio,
-                            True, # is_final
-                            None, # speaker
-                            0.0   # speaker_confidence
-                        )
-                        for event in events:
-                            if event.start_ms is None or event.end_ms is None:
+                        # Transcription execution
+                        try:
+                            events = await asyncio.to_thread(
+                                transcriber.transcribe,
+                                final_audio,
+                                True, # is_final
+                                None, # speaker
+                                0.0   # speaker_confidence
+                            )
+                            for event in events:
+                                event.speaker = None
+                                # Segment start_ms/end_ms must come from actual VAD-detected utterance boundaries
                                 event.start_ms = utterance_start_ms
                                 event.end_ms = utterance_end_ms
-                            else:
-                                # Relativize Whisper timestamps to the utterance start
-                                event.start_ms += utterance_start_ms
-                                event.end_ms += utterance_start_ms
                                 
-                            if event.end_ms <= event.start_ms:
-                                print(f"BUG: Ignored invalid segment with end_ms ({event.end_ms}) <= start_ms ({event.start_ms})")
-                                continue
-                                
-                            await websocket.send_text(event.model_dump_json())
+                                if event.end_ms <= event.start_ms:
+                                    print(f"BUG: Ignored invalid segment with end_ms ({event.end_ms}) <= start_ms ({event.start_ms})")
+                                    continue
+                                    
+                                await websocket.send_text(event.model_dump_json())
+                        except Exception as e:
+                            print(f"Error processing finalized utterance: {e}")
                     else:
                         print(f"BUG: Invalid utterance timestamps: end_ms ({utterance_end_ms}) <= start_ms ({utterance_start_ms})")
                             
@@ -146,21 +147,19 @@ async def transcribe_ws(websocket: WebSocket):
                                 current_ms = total_audio_bytes // BYTES_PER_MS
                                 utterance_end_ms = current_ms
                                 if utterance_end_ms > utterance_start_ms:
-                                    events = await asyncio.to_thread(
-                                        transcriber.transcribe,
-                                        final_audio,
-                                        True,
-                                        None,
-                                        0.0
-                                    )
+                                    asr_task = asyncio.create_task(asyncio.to_thread(
+                                        transcriber.transcribe, final_audio, True, None, 0.0
+                                    ))
+                                    diar_task = asyncio.create_task(asyncio.to_thread(
+                                        speaker_tracker.assign_speaker, final_audio
+                                    ))
+                                    events, raw_speaker = await asyncio.gather(asr_task, diar_task)
+                                    
                                     for event in events:
-                                        if event.start_ms is None or event.end_ms is None:
-                                            event.start_ms = utterance_start_ms
-                                            event.end_ms = utterance_end_ms
-                                        else:
-                                            event.start_ms += utterance_start_ms
-                                            event.end_ms += utterance_start_ms
-                                            
+                                        event.speaker = raw_speaker
+                                        event.start_ms = utterance_start_ms
+                                        event.end_ms = utterance_end_ms
+                                        
                                         if event.end_ms <= event.start_ms:
                                             print(f"BUG: Ignored invalid segment with end_ms ({event.end_ms}) <= start_ms ({event.start_ms})")
                                             continue
