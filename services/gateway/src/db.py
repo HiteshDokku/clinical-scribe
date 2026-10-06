@@ -14,6 +14,20 @@ AsyncSessionLocal = async_sessionmaker(
     bind=engine, class_=AsyncSession, expire_on_commit=False
 )
 
-async def get_db():
+from starlette.requests import HTTPConnection
+from sqlalchemy import text
+
+async def get_db(conn: HTTPConnection):
     async with AsyncSessionLocal() as session:
+        mock_role = conn.headers.get("X-Mock-Role")
+        if mock_role == "admin":
+            user_id = "admin123"
+            role_id = "admin"
+        else:
+            user_id = conn.headers.get("X-User-Id", "dr-martinez")
+            role_id = conn.headers.get("X-Role-Id", "clinician")
+            
+        await session.execute(text("SELECT set_config('app.current_user_id', :uid, false)"), {"uid": user_id})
+        await session.execute(text("SELECT set_config('app.current_role_id', :rid, false)"), {"rid": role_id})
+        await session.execute(text("SET ROLE scribe_app"))
         yield session

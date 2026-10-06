@@ -31,6 +31,19 @@ class ConsentState(str, enum.Enum):
     declined = 'declined'
     granted_verbal_witnessed = 'granted_verbal_witnessed'
 
+class Role(Base):
+    __tablename__ = 'roles'
+    
+    id = Column(String, primary_key=True)
+    name = Column(String, nullable=False)
+
+class User(Base):
+    __tablename__ = 'users'
+    
+    id = Column(DbUUID, primary_key=True)
+    username = Column(String, nullable=False, unique=True)
+    role_id = Column(String, ForeignKey('roles.id'), nullable=False)
+
 class Encounter(Base):
     __tablename__ = 'encounters'
     
@@ -57,6 +70,7 @@ class NoteVersion(Base):
     model_hash = Column(String, nullable=False)
     prompt_version = Column(String, nullable=False)
     created_at = Column(DateTime(timezone=True), nullable=False)
+    reason = Column(String, nullable=True)
 
 class AuditLog(Base):
     __tablename__ = 'audit_log'

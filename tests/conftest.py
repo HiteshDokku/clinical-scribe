@@ -33,6 +33,8 @@ def pg_conn():
 @pytest.fixture
 def sample_encounter_id(pg_conn) -> str:
     encounter_id = str(uuid.uuid4())
+    pg_conn.execute("SELECT set_config('app.current_user_id', 'test-clinician', false)")
+    pg_conn.execute("SELECT set_config('app.current_role_id', 'clinician', false)")
     pg_conn.execute(
         """
         INSERT INTO encounters

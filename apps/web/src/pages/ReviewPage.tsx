@@ -151,9 +151,14 @@ export function ReviewPage() {
             <p className="text-sm text-gray-400 mb-6">
               The clinical note has been signed and submitted for processing.
             </p>
-            <button onClick={() => navigate('/')} className="btn-primary">
-              Start New Session
-            </button>
+            <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
+              <button onClick={() => navigate('/')} className="btn-primary">
+                Start New Session
+              </button>
+              <button onClick={() => navigate(`/audit/${id}`)} className="btn-secondary">
+                View Audit Log
+              </button>
+            </div>
           </motion.div>
         )}
       </AnimatePresence>

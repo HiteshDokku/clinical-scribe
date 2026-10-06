@@ -1,7 +1,7 @@
 import uuid
 import httpx
 from datetime import datetime, timezone
-from fastapi import FastAPI, Depends, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, Depends, HTTPException, WebSocket, WebSocketDisconnect, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from pydantic import BaseModel
@@ -43,6 +43,13 @@ ASR_WS_URL = "ws://asr:8001/transcribe"
 @app.get("/healthz")
 def healthz() -> dict[str, str]:
     return {"status": "ok", "service": "gateway"}
+
+@app.get("/api/v1/test_config")
+async def test_config(db: AsyncSession = Depends(get_db)):
+    from sqlalchemy import text
+    user = (await db.execute(text("SELECT current_setting('app.current_user_id', true)"))).scalar()
+    role = (await db.execute(text("SELECT current_setting('app.current_role_id', true)"))).scalar()
+    return {"user": user, "role": role}
 
 @app.post("/api/v1/encounters", response_model=CreateEncounterResp)
 async def create_encounter(req: CreateEncounterReq, db: AsyncSession = Depends(get_db)):
@@ -365,6 +372,46 @@ async def get_encounter(id: str, db: AsyncSession = Depends(get_db)):
     print("DEBUG GATEWAY PAYLOAD:", json.dumps(response_payload, indent=2))
     return response_payload
 
+@app.get("/api/v1/encounters")
+async def list_encounters(limit: int = 100, order_by: str = "-created_at", state: str | None = None, db: AsyncSession = Depends(get_db)):
+    from sqlalchemy import desc
+    query = select(Encounter)
+    if state:
+        query = query.where(Encounter.state == state)
+    if order_by == "-created_at":
+        query = query.order_by(desc(Encounter.started_at))
+    else:
+        query = query.order_by(Encounter.started_at)
+    query = query.limit(limit)
+    
+    result = await db.execute(query)
+    encounters = result.scalars().all()
+    
+    resp = []
+    for enc in encounters:
+        note_res = await db.execute(
+            select(NoteVersion).where(NoteVersion.encounter_id == enc.id).order_by(desc(NoteVersion.version))
+        )
+        latest_note = note_res.scalars().first()
+        summary = ""
+        if latest_note:
+            sections = latest_note.content_jsonb.get("sections")
+            if isinstance(sections, dict):
+                assessment = sections.get("assessment")
+                if isinstance(assessment, dict):
+                    statements = assessment.get("statements", [])
+                    if isinstance(statements, list):
+                        summary = "\n".join([s.get("text", "") for s in statements if isinstance(s, dict)])
+            
+        resp.append({
+            "id": str(enc.id),
+            "patient_ref": enc.patient_ref,
+            "created_at": enc.started_at.isoformat(),
+            "state": enc.state,
+            "confirmed_diagnosis_summary": summary
+        })
+    return resp
+
 @app.get("/api/v1/encounters/{id}/note")
 async def get_note(id: str, db: AsyncSession = Depends(get_db)):
     result = await db.execute(
@@ -431,6 +478,68 @@ async def sign_note(id: str, db: AsyncSession = Depends(get_db)):
             raise HTTPException(status_code=502, detail="FHIR Gateway Error")
             
     return {"status": "signed"}
+
+class AddendumRequest(BaseModel):
+    section: str
+    corrected_text: str
+    reason: str
+
+@app.post("/api/v1/encounters/{id}/addendum")
+async def append_addendum(id: str, payload: AddendumRequest, req: Request, db: AsyncSession = Depends(get_db)):
+    role_id = req.headers.get("X-Mock-Role", req.headers.get("X-Role-Id", "clinician"))
+    if role_id != "admin":
+        raise HTTPException(status_code=403, detail="Only admins can append addendums")
+    
+    result = await db.execute(select(Encounter).where(Encounter.id == uuid.UUID(id)))
+    enc = result.scalars().first()
+    if not enc:
+        raise HTTPException(status_code=404, detail="Encounter not found")
+        
+    note_res = await db.execute(
+        select(NoteVersion).where(NoteVersion.encounter_id == uuid.UUID(id)).order_by(NoteVersion.version.desc())
+    )
+    latest_note = note_res.scalars().first()
+    if not latest_note:
+        raise HTTPException(status_code=400, detail="No note exists for this encounter")
+        
+    import copy
+    new_content = copy.deepcopy(latest_note.content_jsonb)
+    
+    if "addendums" not in new_content:
+        new_content["addendums"] = []
+        
+    new_content["addendums"].append({
+        "section": payload.section,
+        "corrected_text": payload.corrected_text,
+        "reason": payload.reason,
+        "created_at": datetime.now(timezone.utc).isoformat()
+    })
+    
+    new_version = NoteVersion(
+        id=uuid.uuid4(),
+        encounter_id=enc.id,
+        version=latest_note.version + 1,
+        source="admin_correction",
+        content_jsonb=new_content,
+        model_name=latest_note.model_name,
+        model_hash=latest_note.model_hash,
+        prompt_version=latest_note.prompt_version,
+        reason=payload.reason,
+        created_at=datetime.now(timezone.utc)
+    )
+    db.add(new_version)
+    
+    append_audit_log(
+        session=db,
+        encounter_id=str(enc.id),
+        actor="admin123",
+        action="admin_correction",
+        before={"version": latest_note.version},
+        after={"version": new_version.version, "addendum": {"section": payload.section, "corrected_text": payload.corrected_text, "reason": payload.reason}}
+    )
+    
+    await db.commit()
+    return {"status": "addendum_appended"}
 
 @app.get("/api/v1/encounters/{id}/audit")
 async def get_audit(id: str, db: AsyncSession = Depends(get_db)):

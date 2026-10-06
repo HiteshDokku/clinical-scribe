@@ -9,3 +9,7 @@ app = FastAPI(title="fhir-gateway")
 @app.get("/healthz")
 def healthz() -> dict[str, str]:
     return {"status": "ok", "service": "fhir-gateway"}
+
+@app.post("/push")
+def push_mock(payload: dict) -> dict[str, str]:
+    return {"status": "ok", "message": "mocked fhir push"}

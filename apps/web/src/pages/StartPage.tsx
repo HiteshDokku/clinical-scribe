@@ -40,6 +40,21 @@ export function StartPage() {
       </motion.div>
 
       <StartEncounterForm onStart={handleStart} isLoading={isLoading} />
+      
+      <motion.div 
+        initial={{ opacity: 0 }} 
+        animate={{ opacity: 1 }} 
+        transition={{ delay: 0.5 }} 
+        className="mt-12 text-center"
+      >
+        <p className="text-gray-400 text-sm mb-3">Administrative Actions</p>
+        <button 
+          onClick={() => navigate('/audit')} 
+          className="px-6 py-2 border border-clinical-500/30 text-clinical-300 rounded hover:bg-clinical-500/10 transition-colors font-sans font-semibold text-sm"
+        >
+          View Audit Dashboard
+        </button>
+      </motion.div>
 
     </div>
   );
