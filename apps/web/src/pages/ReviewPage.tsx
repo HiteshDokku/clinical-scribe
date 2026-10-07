@@ -63,6 +63,7 @@ export function ReviewPage() {
       }
     } catch (err) {
       console.error('Failed to process:', err);
+      alert('Failed to process request: ' + (err instanceof Error ? err.message : 'Internal Server Error'));
     } finally {
       setIsSubmitting(false);
     }

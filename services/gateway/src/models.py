@@ -57,6 +57,7 @@ class Encounter(Base):
     state = Column(String, nullable=False, default=EncounterState.created.value)
     retention_opt_in = Column(Boolean, server_default='false', nullable=False)
     degraded_reason = Column(String, nullable=True)
+    ehr_status = Column(String, nullable=False, default='pending')
 
 class NoteVersion(Base):
     __tablename__ = 'note_versions'

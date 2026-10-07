@@ -122,6 +122,12 @@ services:
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
       - REDIS_HOST=${REDIS_HOST}
       - TRANSCRIPT_TTL_SECONDS=${TRANSCRIPT_TTL_SECONDS}
+    volumes:
+      - ./eval:/app/eval
+      - ./tests:/app/tests
+      - ./scripts:/app/scripts
+      - ./packages:/app/packages
+      - ./services/gateway/src:/app/src
     depends_on:
       postgres:
         condition: service_healthy
@@ -168,6 +174,18 @@ services:
     depends_on:
       gateway:
         condition: service_healthy
+
+  hapi-fhir:
+    image: hapiproject/hapi:latest
+    networks: [edge]
+    ports:
+      - "8080:8080"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/fhir/metadata"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
 
 volumes:
   pgdata:

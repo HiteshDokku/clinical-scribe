@@ -1,7 +1,7 @@
 import uuid
 import httpx
 from datetime import datetime, timezone
-from fastapi import FastAPI, Depends, HTTPException, WebSocket, WebSocketDisconnect, Request
+from fastapi import FastAPI, Depends, HTTPException, WebSocket, WebSocketDisconnect, Request, BackgroundTasks
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from pydantic import BaseModel
@@ -155,7 +155,7 @@ async def generate_note(id: str, req: GenerateNoteReq, db: AsyncSession = Depend
                     # Call safety service
                     try:
                         async with httpx.AsyncClient(timeout=10.0) as s_client:
-                            s_resp = await s_client.post("http://safety:8002/api/v1/safety/classify_risk", json={
+                            s_resp = await s_client.post("http://safety:8000/api/v1/safety/classify_risk", json={
                                 "proposed_condition": stmt.get("text", ""),
                                 "symptoms": symptoms
                             })
@@ -169,7 +169,7 @@ async def generate_note(id: str, req: GenerateNoteReq, db: AsyncSession = Depend
             # Form a partial note with just diagnosis sections
             partial_note = {
                 "encounter_id": id,
-                "model": {"name": "llama-3-8b-instruct", "quant": "unknown", "prompt_version": "v1"},
+                "model": res_json.get("model", {"name": "llama-3-8b-instruct", "quant": "unknown", "prompt_version": "v1"}),
                 "sections": {
                     "subjective": diagnose_output["sections"]["subjective"],
                     "objective": diagnose_output["sections"]["objective"],
@@ -293,7 +293,7 @@ async def confirm_diagnosis(id: str, req: ConfirmDiagnosisReq, db: AsyncSession 
     async with httpx.AsyncClient(timeout=10.0) as s_client:
         for med in medications:
             try:
-                s_resp = await s_client.post("http://safety:8002/api/v1/safety/resolve", json={"mention": med["verbatim"]})
+                s_resp = await s_client.post("http://safety:8000/api/v1/safety/resolve", json={"mention": med["verbatim"]})
                 if s_resp.status_code == 200:
                     s_data = s_resp.json()
                     med["ingredient_id"] = s_data.get("ingredient")
@@ -367,7 +367,9 @@ async def get_encounter(id: str, db: AsyncSession = Depends(get_db)):
         "id": str(enc.id),
         "state": enc.state,
         "note": note_json,
-        "transcript": transcript
+        "transcript": transcript,
+        "degraded_reason": getattr(enc, "degraded_reason", None),
+        "ehr_status": getattr(enc, "ehr_status", "pending")
     }
     print("DEBUG GATEWAY PAYLOAD:", json.dumps(response_payload, indent=2))
     return response_payload
@@ -446,7 +448,7 @@ async def patch_note(id: str, req: PatchNoteReq, db: AsyncSession = Depends(get_
     return {"status": "patched"}
 
 @app.post("/api/v1/encounters/{id}/sign")
-async def sign_note(id: str, db: AsyncSession = Depends(get_db)):
+async def sign_note(id: str, background_tasks: BackgroundTasks, db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(Encounter).where(Encounter.id == uuid.UUID(id)))
     enc = result.scalars().first()
     if not enc:
@@ -468,16 +470,46 @@ async def sign_note(id: str, db: AsyncSession = Depends(get_db)):
     )
     await db.commit()
     
-    # Push to FHIR
-    async with httpx.AsyncClient() as client:
-        try:
-            resp = await client.post(FHIR_GATEWAY_URL, json={"encounter_id": id})
-            resp.raise_for_status()
-        except Exception as e:
-            # Revert or log error depending on resilience strategy
-            raise HTTPException(status_code=502, detail="FHIR Gateway Error")
+    # Push to FHIR in background
+    background_tasks.add_task(push_to_fhir_bg, id)
             
     return {"status": "signed"}
+
+async def push_to_fhir_bg(encounter_id: str):
+        import logging
+        from src.db import AsyncSessionLocal
+        logger = logging.getLogger("fhir_push")
+        async with httpx.AsyncClient() as client:
+            try:
+                resp = await client.post(FHIR_GATEWAY_URL, json={"encounter_id": encounter_id})
+                resp.raise_for_status()
+                logger.info(f"Successfully pushed encounter {encounter_id} to FHIR gateway")
+                async with AsyncSessionLocal() as session:
+                    enc_res = await session.execute(select(Encounter).where(Encounter.id == uuid.UUID(encounter_id)))
+                    enc_obj = enc_res.scalars().first()
+                    if enc_obj:
+                        enc_obj.ehr_status = "synced"
+                        await session.commit()
+            except Exception as e:
+                logger.error(f"FHIR Gateway Error for encounter {encounter_id}: {e}")
+                async with AsyncSessionLocal() as session:
+                    enc_res = await session.execute(select(Encounter).where(Encounter.id == uuid.UUID(encounter_id)))
+                    enc_obj = enc_res.scalars().first()
+                    if enc_obj:
+                        enc_obj.ehr_status = "queued_local"
+                        await session.commit()
+
+
+
+@app.post("/api/v1/encounters/{id}/retry_sync")
+async def retry_sync(id: str, background_tasks: BackgroundTasks, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(Encounter).where(Encounter.id == uuid.UUID(id)))
+    enc = result.scalars().first()
+    if not enc or enc.state != "signed" or getattr(enc, "ehr_status", "") != "queued_local":
+        raise HTTPException(status_code=400, detail="Cannot retry sync")
+        
+    background_tasks.add_task(push_to_fhir_bg, id)
+    return {"status": "retry_queued"}
 
 class AddendumRequest(BaseModel):
     section: str
@@ -656,4 +688,13 @@ async def ws_stream(websocket: WebSocket, id: str, db: AsyncSession = Depends(ge
         pass
     finally:
         if asr_ws:
-            await asr_ws.close()
+            try:
+                await asr_ws.close()
+            except:
+                pass
+                
+        # If abnormal disconnect during recording (e.g. ASR crash or client drop)
+        if enc.state == EncounterState.recording.value:
+            enc.state = EncounterState.degraded.value
+            enc.degraded_reason = "asr_unavailable"
+            await db.commit()

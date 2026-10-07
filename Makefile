@@ -4,11 +4,11 @@ dev:
 	docker compose up --build
 
 test:
-	docker compose run --rm gateway pytest tests/ -v
+	docker compose run --rm gateway bash -c "uv pip install --system jiwer pyyaml pytest pytest-asyncio && pytest tests/ -v"
 	docker compose run --rm web npm run test
 
 eval:
-	docker compose run --rm gateway python -m eval.harness.run --dataset $(DATASET)
+	docker compose run --rm gateway bash -c "uv pip install --system jiwer pyyaml && python -m eval.harness.run --dataset $(DATASET)"
 
 seed:
 	docker compose run --rm gateway python -m scripts.seed_drug_data \
