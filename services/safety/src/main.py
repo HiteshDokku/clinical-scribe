@@ -25,6 +25,7 @@ class CheckPairRequest(BaseModel):
 class Interaction(BaseModel):
     severity: str
     source: str
+    source_ref: Optional[str] = None
     description: Optional[str]
 
 class CheckPairResponse(BaseModel):
@@ -63,8 +64,11 @@ class ClassifyRiskReq(BaseModel):
 
 class ClassifyRiskResp(BaseModel):
     risk_tier: str
+    reason: Optional[str] = None
+    reason_code: Optional[str] = None
 
 @app.post("/api/v1/safety/classify_risk", response_model=ClassifyRiskResp)
 def classify_risk(req: ClassifyRiskReq):
-    tier = classify_diagnosis_risk(req.proposed_condition, req.symptoms)
-    return ClassifyRiskResp(risk_tier=tier)
+    res = classify_diagnosis_risk(req.proposed_condition, req.symptoms)
+    return ClassifyRiskResp(risk_tier=res.tier, reason=res.reason, reason_code=res.reason_code)
+

@@ -3,8 +3,9 @@ import { motion } from 'framer-motion';
 interface Props {
   title: string;
   sectionKey: string;
-  count?: number;
-  actions?: React.ReactNode;
+  confirmedCount?: number;
+  totalCount?: number;
+  isInsufficient?: boolean;
 }
 
 const SECTION_ICONS: Record<string, string> = {
@@ -23,7 +24,9 @@ const SECTION_DESCRIPTIONS: Record<string, string> = {
   medications: 'Prescribed and recommended medications',
 };
 
-export function SectionHeader({ title, sectionKey, count, actions }: Props) {
+export function SectionHeader({ title, sectionKey, confirmedCount = 0, totalCount = 0, isInsufficient = false }: Props) {
+  const isComplete = isInsufficient || (totalCount > 0 && confirmedCount === totalCount) || (totalCount === 0);
+
   return (
     <motion.div
       initial={{ opacity: 0, x: -10 }}
@@ -38,9 +41,30 @@ export function SectionHeader({ title, sectionKey, count, actions }: Props) {
           <h3 className="text-sm font-bold text-white uppercase tracking-wide">
             {title}
           </h3>
-          {count !== undefined && (
-            <span className="badge-ai text-[10px]">
-              {count} statement{count !== 1 ? 's' : ''}
+          {isInsufficient ? (
+            <span className="badge-success text-[10px] flex items-center gap-1">
+              <svg className="w-3 h-3 text-safety-success" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+              </svg>
+              Not discussed · Complete
+            </span>
+          ) : totalCount > 0 ? (
+            <span className={`text-[10px] px-2 py-0.5 rounded-full flex items-center gap-1 font-medium ${
+              isComplete ? 'bg-safety-success/15 text-safety-success border border-safety-success/30' : 'bg-white/10 text-gray-300'
+            }`}>
+              {isComplete && (
+                <svg className="w-3 h-3 text-safety-success" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                </svg>
+              )}
+              {confirmedCount} of {totalCount} confirmed
+            </span>
+          ) : (
+            <span className="badge-success text-[10px] flex items-center gap-1">
+              <svg className="w-3 h-3 text-safety-success" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+              </svg>
+              Complete
             </span>
           )}
         </div>
@@ -48,11 +72,6 @@ export function SectionHeader({ title, sectionKey, count, actions }: Props) {
           {SECTION_DESCRIPTIONS[sectionKey] ?? ''}
         </p>
       </div>
-      {actions && (
-        <div className="flex items-center gap-2 ml-4">
-          {actions}
-        </div>
-      )}
     </motion.div>
   );
 }

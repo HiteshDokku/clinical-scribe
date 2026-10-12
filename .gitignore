@@ -1,4 +1,4 @@
-﻿# Secrets and local env
+# Secrets and local env
 .env
 infra/secrets/*.pem
 infra/secrets/*.key
@@ -16,14 +16,14 @@ node_modules/
 apps/web/dist/
 apps/web/.vite/
 
-# Data â€” never commit patient-adjacent or large media data
+# Data — never commit patient-adjacent or large media data
 eval/datasets/**/*.wav
 eval/datasets/**/*.mp3
 eval/datasets/**/*.flac
 *.db
 *.sqlite3
 
-# Model weights â€” too large for git, fetched by scripts/download-models.sh
+# Model weights — too large for git, fetched by scripts/download-models.sh
 services/llm/weights/
 services/asr/weights/
 
@@ -38,4 +38,15 @@ eval/reports/*/*.md
 !eval/reports/.gitkeep
 
 services/asr/models/
+services/safety/models/
 *.egg-info/
+eval/datasets/audio/primock57/
+eval/datasets/drugs/public-PDDI-analysis/
+eval/datasets/drugs/Indian-Medicine-Dataset/
+eval/datasets/text/aci-bench/
+
+apps/web/test-results/
+apps/web/playwright-report/
+*.tsbuildinfo
+artifacts/
+scratch/

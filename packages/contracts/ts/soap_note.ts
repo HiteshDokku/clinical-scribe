@@ -8,32 +8,37 @@
 export type StatementList = {
   id: string;
   text: string;
+  statement_type?: "grounded" | "clinician_entered";
   /**
    * Non-empty by design — a statement with no cited transcript span cannot exist. This is the schema-level enforcement of 'no hallucinated claims.'
-   *
-   * @minItems 1
    */
-  evidence: [string, ...string[]];
+  evidence?: string[];
   confidence?: number;
+  authored_by?: string;
+  created_at?: string;
   [k: string]: unknown;
 }[];
 export type AssessmentStatementList = {
   id: string;
   text: string;
-  statement_type: "grounded" | "inferred_diagnosis";
+  statement_type: "grounded" | "inferred_diagnosis" | "clinician_entered";
   reasoning_basis?: string;
   risk_tier?: "common" | "requires_review" | "red_flag";
   evidence?: string[];
   confidence?: number;
+  authored_by?: string;
+  created_at?: string;
   [k: string]: unknown;
 }[];
 export type PlanStatementList = {
   id: string;
   text: string;
-  statement_type: "grounded" | "inferred_plan";
+  statement_type: "grounded" | "inferred_plan" | "clinician_entered";
   reasoning_basis?: string;
   evidence?: string[];
   confidence?: number;
+  authored_by?: string;
+  created_at?: string;
   [k: string]: unknown;
 }[];
 
@@ -43,6 +48,10 @@ export interface SoapNote {
     name: "llama-3-8b-instruct";
     quant: string;
     prompt_version: string;
+    /**
+     * The sha256 digest of the exact model used.
+     */
+    digest: string;
     [k: string]: unknown;
   };
   generated_at: string;
@@ -122,13 +131,9 @@ export interface AssessmentSection {
 export interface PlanSection {
   statements: PlanStatementList;
   /**
-   * True when the transcript contains nothing relevant to this section.
+   * Status of the plan generation.
    */
-  insufficient_content: boolean;
-  /**
-   * One-line explanation of why this section has no content.
-   */
-  reason?: string | null;
+  status: "pending" | "generated";
   [k: string]: unknown;
 }
 export interface SafetyFlag {

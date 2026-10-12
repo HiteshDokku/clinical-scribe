@@ -8,13 +8,17 @@ import { SignButton } from './SignButton';
 import { useReviewState } from '@/hooks/useReviewState';
 
 import type { ReviewPhase } from '@/hooks/useReviewState';
+import { addStatement } from '@/api/encounters';
 
 interface Props {
   soapNote: SoapNote;
   evidenceMap: Record<string, string>;
-  onSign: (editedSections: Record<string, string>) => void;
+  onSign: (editedSections: Record<string, string>, statementDeterminations: Record<string, string>, medicationEntries: Record<string, string>, acknowledgedFlags?: string[]) => void;
+  onNoteUpdated?: (note: SoapNote) => void;
   phase: ReviewPhase;
   isSubmitting?: boolean;
+  serverError?: string | null;
+  serverErrorItems?: Record<string, string>;
 }
 
 type SectionKey = 'subjective' | 'objective' | 'assessment' | 'plan';
@@ -26,9 +30,20 @@ const SECTION_TITLES: Record<SectionKey, string> = {
   plan: 'Plan',
 };
 
-export function SoapReviewScreen({ soapNote, evidenceMap, onSign, phase, isSubmitting = false }: Props) {
+export function SoapReviewScreen({
+  soapNote,
+  evidenceMap,
+  onSign,
+  onNoteUpdated,
+  phase,
+  isSubmitting = false,
+  serverError = null,
+  serverErrorItems = {},
+}: Props) {
   const [editingSection, setEditingSection] = useState<string | null>(null);
   const [draftText, setDraftText] = useState<string>('');
+  const [isSaving, setIsSaving] = useState(false);
+  const [manualErrors, setManualErrors] = useState<Record<string, string | null>>({});
 
   const {
     reviewState,
@@ -36,76 +51,90 @@ export function SoapReviewScreen({ soapNote, evidenceMap, onSign, phase, isSubmi
     isFlagAcknowledged,
     reviewStatement,
     acknowledgeSafetyFlag,
-    approveSection,
+    setStatementDetermination,
+    setMedicationEntry,
     canSign,
     blockingReasons,
+    blockingItems,
   } = useReviewState(soapNote, phase);
 
   const ungroundedIds = new Set(soapNote.grounding.ungrounded_ids);
 
+  const scrollToItem = (itemId: string) => {
+    const el = document.getElementById(`item-${itemId}`);
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      el.classList.add('ring-2', 'ring-amber-400');
+      setTimeout(() => {
+        el.classList.remove('ring-2', 'ring-amber-400');
+      }, 2500);
+    }
+  };
+
+  const handleSaveManual = async (key: SectionKey) => {
+    const text = draftText.trim();
+    if (!text) return;
+    setIsSaving(true);
+    setManualErrors((prev) => ({ ...prev, [key]: null }));
+    try {
+      const updatedNote = await addStatement(soapNote.encounter_id, key, text);
+      if (onNoteUpdated) {
+        onNoteUpdated(updatedNote);
+      }
+      setEditingSection(null);
+      setDraftText('');
+    } catch (err: any) {
+      const msg = err.response?.data?.detail || err.message || 'Failed to save statement';
+      setManualErrors((prev) => ({ ...prev, [key]: msg }));
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   const renderSection = (key: SectionKey, section: SoapSection) => {
-    const isApproved = reviewState.sectionApprovals[key];
     const isEditing = editingSection === key;
-    const customText = reviewState.sectionEdits[key];
     const statements = section.statements;
+    const confirmedCount = statements.filter((s) => isStatementReviewed(s.id)).length;
+    const totalCount = statements.length;
 
     const handleEditClick = () => {
       setEditingSection(key);
-      if (customText !== undefined) {
-        setDraftText(customText);
-      } else {
-        setDraftText(statements.map(s => s.text).join('\n'));
-      }
+      setDraftText('');
+      setManualErrors((prev) => ({ ...prev, [key]: null }));
     };
-
-    const handleSave = () => {
-      approveSection(key, draftText);
-      setEditingSection(null);
-    };
-
-    const handleApprove = () => {
-      approveSection(key, customText);
-    };
-
-    const actions = (
-      <>
-        {!isApproved && !isEditing && (
-          <>
-            <button onClick={handleApprove} className="btn-primary text-xs px-3 py-1.5 min-w-[80px]">Approve</button>
-            <button onClick={handleEditClick} className="btn-secondary text-xs px-3 py-1.5 min-w-[80px]">Edit</button>
-          </>
-        )}
-        {isApproved && !isEditing && (
-          <>
-            <span className="text-safety-success text-xs font-bold flex items-center gap-1">
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
-              Approved
-            </span>
-            <button onClick={handleEditClick} className="btn-ghost text-xs px-3 py-1.5 ml-2">Edit</button>
-          </>
-        )}
-        {isEditing && (
-          <>
-            <button onClick={() => setEditingSection(null)} className="btn-ghost text-xs px-3 py-1.5">Cancel</button>
-            <button onClick={handleSave} className="btn-primary text-xs px-3 py-1.5">Save & Approve</button>
-          </>
-        )}
-      </>
-    );
 
     return (
-      <div key={key} className={`border rounded-xl p-4 transition-colors ${isApproved ? 'border-safety-success/30 bg-safety-success/5' : 'border-clinical-700/50'}`}>
+      <div key={key} className="border border-clinical-700/50 rounded-xl p-4 transition-colors">
         <SectionHeader
           title={SECTION_TITLES[key]}
           sectionKey={key}
-          count={customText !== undefined ? undefined : statements.length}
-          actions={actions}
+          confirmedCount={confirmedCount}
+          totalCount={totalCount}
+          isInsufficient={section.insufficient_content}
         />
         
-        {/* Insufficient content state — uses --draft token (#FCD34D) per
-            docs/design/frontend-direction.md. Visually distinct from both
-            a normal confirmed section and an ungrounded/flagged one. */}
-        {section.insufficient_content && !isEditing && customText === undefined ? (
+        {/* Existing statements */}
+        {statements.length > 0 && (
+          <div className="space-y-2 mt-3">
+            {statements.map((stmt, i) => (
+              <StatementRow
+                key={stmt.id}
+                statement={stmt}
+                isUngrounded={ungroundedIds.has(stmt.id)}
+                isReviewed={isStatementReviewed(stmt.id)}
+                onReview={reviewStatement}
+                onManualDetermination={setStatementDetermination}
+                manualDetermination={reviewState.statementDeterminations[stmt.id]}
+                evidenceMap={evidenceMap}
+                index={i}
+                serverError={serverErrorItems[stmt.id]}
+              />
+            ))}
+          </div>
+        )}
+
+        {/* Insufficient content empty state */}
+        {section.insufficient_content && !isEditing && statements.length === 0 && (
           <div className="mt-3 rounded-lg border-2 border-dashed px-4 py-6 text-center"
                style={{ borderColor: '#FCD34D', backgroundColor: 'rgba(252, 211, 77, 0.06)' }}>
             <p className="text-sm font-medium" style={{ color: '#FCD34D' }}>
@@ -119,36 +148,64 @@ export function SoapReviewScreen({ soapNote, evidenceMap, onSign, phase, isSubmi
               Add manually
             </button>
           </div>
-        ) : isEditing ? (
+        )}
+
+        {/* Editing mode: textarea + save/cancel + inline error */}
+        {isEditing && (
           <div className="mt-3">
+            {manualErrors[key] && (
+              <div className="text-xs text-red-400 mb-2 p-2 rounded bg-red-900/20 border border-red-500/30">
+                {manualErrors[key]}
+              </div>
+            )}
             <textarea
               className="w-full bg-clinical-900 border border-clinical-700 rounded-lg p-3 text-sm text-gray-200 focus:outline-none focus:border-clinical-500 min-h-[100px]"
               value={draftText}
               onChange={(e) => setDraftText(e.target.value)}
+              placeholder="Enter clinical observations..."
+              autoFocus
             />
+            <div className="flex justify-end gap-2 mt-2">
+              <button
+                onClick={() => {
+                  setEditingSection(null);
+                  setDraftText('');
+                  setManualErrors((prev) => ({ ...prev, [key]: null }));
+                }}
+                className="btn-ghost text-xs px-3 py-1.5"
+                disabled={isSaving}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => handleSaveManual(key)}
+                className="btn-primary text-xs px-3 py-1.5"
+                disabled={isSaving}
+              >
+                {isSaving ? 'Saving...' : 'Save & confirm'}
+              </button>
+            </div>
           </div>
-        ) : customText !== undefined ? (
-          <div className="mt-3 text-sm text-gray-200 whitespace-pre-wrap pl-2 border-l-2 border-clinical-600">
-            {customText}
-          </div>
-        ) : (
-          <div className="space-y-2 mt-3">
-            {statements.map((stmt, i) => (
-              <StatementRow
-                key={stmt.id}
-                statement={stmt}
-                isUngrounded={ungroundedIds.has(stmt.id)}
-                isReviewed={isStatementReviewed(stmt.id)}
-                onReview={reviewStatement}
-                evidenceMap={evidenceMap}
-                index={i}
-              />
-            ))}
+        )}
+
+        {/* When not editing and section has statements (or is not insufficient content), show "+ Add another" */}
+        {!isEditing && (statements.length > 0 || !section.insufficient_content) && (
+          <div className="mt-2 pt-1">
+            <button
+              onClick={handleEditClick}
+              className="text-xs font-medium text-clinical-400 hover:text-clinical-300 flex items-center gap-1.5 px-2 py-1 rounded hover:bg-clinical-800/40 transition-colors"
+            >
+              + Add another
+            </button>
           </div>
         )}
       </div>
     );
   };
+
+  const meds = soapNote.medications ?? [];
+  const medsConfirmedCount = meds.filter((m) => isStatementReviewed(m.id)).length;
+  const medsTotalCount = meds.length;
 
   return (
     <motion.div
@@ -172,7 +229,6 @@ export function SoapReviewScreen({ soapNote, evidenceMap, onSign, phase, isSubmi
             </p>
           </div>
         </div>
-
 
         {/* Grounding summary */}
         <div className="flex items-center gap-4 mt-4">
@@ -216,100 +272,48 @@ export function SoapReviewScreen({ soapNote, evidenceMap, onSign, phase, isSubmi
           renderSection('plan', soapNote.sections.plan)
         )}
       </div>
-      {(phase === 'medication' || phase === 'all') && soapNote.medications && soapNote.medications.length > 0 && (() => {
-        const key = 'medications';
-        const isApproved = reviewState.sectionApprovals[key];
-        const isEditing = editingSection === key;
-        const customText = reviewState.sectionEdits[key];
 
-        const handleEditClick = () => {
-          setEditingSection(key);
-          if (customText !== undefined) {
-            setDraftText(customText);
-          } else {
-            setDraftText(soapNote.medications!.map(m => `${m.verbatim}${m.dose?.value ? ` ${m.dose.value} ${m.dose.unit || ''}` : ''}`).join('\n'));
-          }
-        };
-
-        const handleSave = () => {
-          approveSection(key, draftText);
-          setEditingSection(null);
-        };
-
-        const handleApprove = () => {
-          approveSection(key, customText);
-        };
-
-        const actions = (
-          <>
-            {!isApproved && !isEditing && (
-              <>
-                <button onClick={handleApprove} className="btn-primary text-xs px-3 py-1.5 min-w-[80px]">Approve</button>
-                <button onClick={handleEditClick} className="btn-secondary text-xs px-3 py-1.5 min-w-[80px]">Edit</button>
-              </>
-            )}
-            {isApproved && !isEditing && (
-              <>
-                <span className="text-safety-success text-xs font-bold flex items-center gap-1">
-                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
-                  Approved
-                </span>
-                <button onClick={handleEditClick} className="btn-ghost text-xs px-3 py-1.5 ml-2">Edit</button>
-              </>
-            )}
-            {isEditing && (
-              <>
-                <button onClick={() => setEditingSection(null)} className="btn-ghost text-xs px-3 py-1.5">Cancel</button>
-                <button onClick={handleSave} className="btn-primary text-xs px-3 py-1.5">Save & Approve</button>
-              </>
-            )}
-          </>
-        );
-
-        return (
-          <div className={`mt-4 border rounded-xl p-4 transition-colors ${isApproved ? 'border-safety-success/30 bg-safety-success/5' : 'border-clinical-700/50'}`}>
-            <SectionHeader
-              title="Medications"
-              sectionKey="medications"
-              count={customText !== undefined ? undefined : soapNote.medications.length}
-              actions={actions}
-            />
-            
-            {isEditing ? (
-              <div className="mt-3">
-                <textarea
-                  className="w-full bg-clinical-900 border border-clinical-700 rounded-lg p-3 text-sm text-gray-200 focus:outline-none focus:border-clinical-500 min-h-[100px]"
-                  value={draftText}
-                  onChange={(e) => setDraftText(e.target.value)}
-                />
-              </div>
-            ) : customText !== undefined ? (
-              <div className="mt-3 text-sm text-gray-200 whitespace-pre-wrap pl-2 border-l-2 border-clinical-600">
-                {customText}
-              </div>
-            ) : (
-              <div className="space-y-3 mt-3">
-                {soapNote.medications.map((med) => (
-                  <MedicationRow
-                    key={med.id}
-                    medication={med}
-                    isFlagAcknowledged={isFlagAcknowledged}
-                    onAcknowledgeFlag={acknowledgeSafetyFlag}
-                  />
-                ))}
-              </div>
-            )}
+      {(phase === 'medication' || phase === 'all') && meds.length > 0 && (
+        <div className="mt-4 border border-clinical-700/50 rounded-xl p-4 transition-colors">
+          <SectionHeader
+            title="Medications"
+            sectionKey="medications"
+            confirmedCount={medsConfirmedCount}
+            totalCount={medsTotalCount}
+          />
+          <div className="space-y-3 mt-3">
+            {meds.map((med) => (
+              <MedicationRow
+                key={med.id}
+                medication={med}
+                isFlagAcknowledged={isFlagAcknowledged}
+                onAcknowledgeFlag={acknowledgeSafetyFlag}
+                onManualEntry={setMedicationEntry}
+                manualEntry={reviewState.medicationEntries[med.id]}
+                isReviewed={isStatementReviewed(med.id)}
+                onReview={reviewStatement}
+                serverError={serverErrorItems[med.id]}
+              />
+            ))}
           </div>
-        );
-      })()}
+        </div>
+      )}
 
-      {/* Sign Button */}
+      {/* Sign / Confirm diagnosis Button */}
       <SignButton
         canSign={canSign}
         blockingReasons={blockingReasons}
-        onSign={() => onSign(reviewState.sectionEdits)}
-        label={phase === 'diagnosis' ? "Confirm Diagnosis" : "Sign Note"}
+        blockingItems={blockingItems}
+        onSign={() => onSign(
+          reviewState.sectionEdits,
+          reviewState.statementDeterminations,
+          reviewState.medicationEntries,
+          Object.keys(reviewState.flagAcknowledgments || {}).filter(k => reviewState.flagAcknowledgments[k])
+        )}
+        label={phase === 'diagnosis' ? "Confirm diagnosis" : "Sign note"}
         isSubmitting={isSubmitting}
+        onScrollToItem={scrollToItem}
+        serverError={serverError}
       />
     </motion.div>
   );

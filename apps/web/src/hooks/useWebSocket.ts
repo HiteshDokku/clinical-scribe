@@ -17,13 +17,20 @@ export function useWebSocket(): UseWebSocketReturn {
 
   const connect = useCallback(
     (encounterId: string, onTranscript: (e: TranscriptEvent) => void) => {
-      if (managerRef.current) return;
+      if (managerRef.current?.isConnected()) return;
+      if (managerRef.current) {
+        managerRef.current.close();
+        managerRef.current = null;
+      }
 
       const manager = connectWebSocket(encounterId, {
         onTranscript,
         onError: (err) => console.error('[WS Error]', err),
         onOpen: () => setIsConnected(true),
-        onClose: () => setIsConnected(false),
+        onClose: () => {
+          setIsConnected(false);
+          managerRef.current = null;
+        },
       });
       managerRef.current = manager;
     },

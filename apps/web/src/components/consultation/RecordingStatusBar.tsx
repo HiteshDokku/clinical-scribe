@@ -58,11 +58,15 @@ export function RecordingStatusBar({ state, isConnected }: Props) {
       <div className="flex items-center gap-2">
         <div
           className={`w-2 h-2 rounded-full ${
-            isConnected ? 'bg-safety-success' : 'bg-safety-flag-red'
+            state === 'recording'
+              ? (isConnected ? 'bg-safety-success' : 'bg-safety-flag-red')
+              : 'bg-gray-500'
           }`}
         />
-        <span className="text-xs text-gray-500">
-          {isConnected ? 'Connected' : 'Disconnected'}
+        <span className="text-xs text-gray-400">
+          {state === 'recording'
+            ? (isConnected ? 'Connected' : 'Disconnected')
+            : 'Not recording'}
         </span>
       </div>
     </motion.div>

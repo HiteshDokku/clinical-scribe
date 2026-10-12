@@ -70,7 +70,7 @@ export function AuditDashboard() {
             <tbody>
               {encounters.filter(e => e.state === 'signed').length === 0 ? (
                 <tr>
-                  <td colSpan={4} className="p-8 text-center text-slate-400 font-sans">No encounters found.</td>
+                  <td colSpan={4} className="p-8 text-center text-slate-400 font-sans">No signed encounters yet</td>
                 </tr>
               ) : encounters.filter(e => e.state === 'signed').map((enc) => (
                 <motion.tr 
@@ -86,7 +86,7 @@ export function AuditDashboard() {
                     {enc.patient_ref}
                   </td>
                   <td className="p-4 text-sm text-slate-300 font-sans truncate max-w-[250px]">
-                    {enc.confirmed_diagnosis_summary || <span className="italic text-slate-500">Pending</span>}
+                    {enc.confirmed_diagnosis_summary || "No diagnosis recorded"}
                   </td>
                   <td className="p-4">
                     <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold border ${getStatusColor(enc.state)}`}>

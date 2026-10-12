@@ -10,7 +10,7 @@ import { useEncounter } from '@/hooks/useEncounter';
 import { useAudioCapture } from '@/hooks/useAudioCapture';
 import { useWebSocket } from '@/hooks/useWebSocket';
 import { useTranscript } from '@/hooks/useTranscript';
-import { generateNote } from '@/api/encounters';
+import { generateNote, getEncounter } from '@/api/encounters';
 
 export function ConsultationPage() {
   const { id } = useParams<{ id: string }>();
@@ -24,13 +24,29 @@ export function ConsultationPage() {
   const consentState = encounter?.consent_state ?? 'pending';
   const encounterState = encounter?.state ?? 'created';
 
-  // Initialize — set up encounter state for display
+  // Initialize — fetch server state or fallback to minimal encounter
   useEffect(() => {
-    if (!encounter && id) {
-      // When navigating directly, set up a minimal encounter
-      initEncounter(id);
-    }
-  }, [id, encounter, initEncounter]);
+    if (!id) return;
+    getEncounter(id)
+      .then((data: any) => {
+        if (data) {
+          updateEncounter({
+            id: data.id,
+            state: data.state as any,
+            consent_state: data.consent_state as any,
+          });
+          if (data.transcript && Array.isArray(data.transcript) && segments.length === 0) {
+            data.transcript.forEach((ev: any) => addEvent(ev));
+          }
+        }
+      })
+      .catch(() => {
+        if (!encounter) {
+          initEncounter(id);
+        }
+      });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id]);
 
   useEffect(() => {
     if (id) {
@@ -57,15 +73,23 @@ export function ConsultationPage() {
         updateEncounter({ consent_state: value });
       }
     },
-    [updateEncounter, sendConsent],
+    [updateEncounter, sendConsent, id],
   );
 
-  const handleStartRecording = useCallback(async () => {
-    updateEncounter({ state: 'recording' });
-    await startAudio();
-  }, [updateEncounter, startAudio]);
-
   const [isStopping, setIsStopping] = useState(false);
+
+  const handleStartRecording = useCallback(async () => {
+    setIsStopping(false);
+    setIsNoteGenerated(false);
+    updateEncounter({ state: 'recording' });
+    if (id) {
+      connect(id, addEvent);
+      if (consentState === 'granted' || consentState === 'granted_verbal_witnessed') {
+        sendConsent(consentState);
+      }
+    }
+    await startAudio();
+  }, [updateEncounter, startAudio, id, connect, addEvent, consentState, sendConsent]);
 
   const handleStopRecording = useCallback(async () => {
     updateEncounter({ state: 'transcribing' });
@@ -76,10 +100,12 @@ export function ConsultationPage() {
 
   const [isGenerating, setIsGenerating] = useState(false);
   const [isNoteGenerated, setIsNoteGenerated] = useState(false);
+  const [generateError, setGenerateError] = useState<string | null>(null);
 
   const handleGenerateNote = async () => {
     if (!id) return;
     setIsGenerating(true);
+    setGenerateError(null);
     try {
       const finalSegments = [...segments];
       if (currentPartial) {
@@ -89,8 +115,9 @@ export function ConsultationPage() {
       await generateNote(id, finalSegments);
       setIsGenerating(false);
       setIsNoteGenerated(true);
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to generate note:', err);
+      setGenerateError(err.message || 'Failed to generate note.');
       updateEncounter({ state: 'degraded' });
       setIsGenerating(false);
     }
@@ -170,27 +197,34 @@ export function ConsultationPage() {
           <motion.div
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
-            className="flex justify-center mt-6"
+            className="flex flex-col items-center mt-6"
           >
             {!isNoteGenerated ? (
-              <button 
-                className="px-6 py-3 rounded-lg font-semibold text-white transition-all bg-clinical-500 hover:bg-clinical-400 shadow-[0_0_20px_rgba(30,190,165,0.3)] hover:shadow-[0_0_30px_rgba(30,190,165,0.5)] flex items-center gap-2"
-                onClick={handleGenerateNote}
-                disabled={isGenerating}
-              >
-                {isGenerating ? (
-                  <>
-                    <svg className="animate-spin w-5 h-5" viewBox="0 0 24 24" fill="none">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                    </svg>
-                    Generating SOAP Note...
-                  </>
-                ) : (
-                  'Generate SOAP Note'
-                )}
-              </button>
-            ) : (
+              <div className="flex flex-col items-center gap-3">
+                <button 
+                    className="px-6 py-3 rounded-lg font-semibold text-white transition-all bg-clinical-500 hover:bg-clinical-400 shadow-[0_0_20px_rgba(30,190,165,0.3)] hover:shadow-[0_0_30px_rgba(30,190,165,0.5)] flex items-center gap-2"
+                    onClick={handleGenerateNote}
+                    disabled={isGenerating}
+                  >
+                    {isGenerating ? (
+                      <>
+                        <svg className="animate-spin w-5 h-5" viewBox="0 0 24 24" fill="none">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                        </svg>
+                        Generating SOAP Note...
+                      </>
+                    ) : (
+                      'Generate SOAP Note'
+                    )}
+                  </button>
+                  {generateError && (
+                    <div className="text-red-400 text-sm mt-2 px-4 py-2 bg-red-500/10 border border-red-500/20 rounded-md max-w-sm text-center">
+                      {generateError}
+                    </div>
+                  )}
+                </div>
+              ) : (
               <button 
                 className="px-6 py-3 rounded-lg font-semibold text-white transition-all bg-emerald-500 hover:bg-emerald-400 shadow-[0_0_20px_rgba(16,185,129,0.3)] hover:shadow-[0_0_30px_rgba(16,185,129,0.5)] flex items-center gap-2"
                 onClick={() => navigate(`/encounter/${id}/review`)}

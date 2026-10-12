@@ -34,6 +34,26 @@ def main():
     ]
     try:
         subprocess.run(py_cmd, check=True, shell=sys.platform == "win32")
+        
+        # Post-process py_out to enforce evidence validation on StatementListItem
+        py_content = py_out.read_text(encoding="utf-8")
+        if "model_validator" not in py_content:
+            py_content = py_content.replace(
+                "from pydantic import AwareDatetime, BaseModel, Field, RootModel, confloat, constr",
+                "from pydantic import AwareDatetime, BaseModel, Field, RootModel, confloat, constr, model_validator"
+            )
+        validator_code = """    @model_validator(mode='after')
+    def validate_evidence(self):
+        if getattr(self, 'statement_type', None) != StatementType2.clinician_entered:
+            if not self.evidence or len(self.evidence) < 1:
+                raise ValueError("evidence must contain at least 1 item")
+        return self
+
+"""
+        target_marker = "class StatementListItem(BaseModel):\n"
+        if target_marker in py_content and "def validate_evidence" not in py_content:
+            py_content = py_content.replace(target_marker, target_marker + validator_code)
+        py_out.write_text(py_content, encoding="utf-8")
     except subprocess.CalledProcessError as e:
         print(f"Failed to generate Python models: {e}")
         sys.exit(1)

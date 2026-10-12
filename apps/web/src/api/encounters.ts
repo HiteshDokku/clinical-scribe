@@ -2,10 +2,36 @@ import type { CreateEncounterResponse } from '@/types/contracts';
 
 const BASE = '/api/v1';
 
-async function apiFetch(url: string, options: RequestInit = {}) {
+let cachedToken: string | null = null;
+
+async function getAuthToken(): Promise<string> {
+  if (cachedToken) return cachedToken;
   const demoRole = localStorage.getItem('demo_role') || 'clinician';
+  const username = demoRole === 'admin' ? 'admin' : 'dr-martinez';
+  const password = demoRole === 'admin' ? 'dev_admin_pass' : 'dev_clinician_pass';
+  
+  const res = await fetch(`${BASE}/auth/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username, password })
+  });
+  if (!res.ok) throw new Error("Failed to login");
+  const data = await res.json();
+  cachedToken = data.access_token;
+  if (!cachedToken) throw new Error("No token returned");
+  return cachedToken;
+}
+
+async function apiFetch(url: string, options: RequestInit = {}) {
+  const token = await getAuthToken();
   const headers = new Headers(options.headers || {});
-  headers.set('X-Mock-Role', demoRole);
+  headers.set('Authorization', `Bearer ${token}`);
+  
+  // Extract csrf_token from cookies
+  const match = document.cookie.match(new RegExp('(^| )csrf_token=([^;]+)'));
+  if (match && match[2]) {
+    headers.set('X-CSRF-Token', match[2] as string);
+  }
   
   return fetch(url, { ...options, headers });
 }
@@ -58,23 +84,75 @@ export async function getEncounter(
   return res.json();
 }
 
+export class ApiError extends Error {
+  status: number;
+  data: any;
+  items: Array<{ kind: string; id: string; reason: string }>;
+
+  constructor(message: string, status: number, data?: any) {
+    super(message);
+    this.name = 'ApiError';
+    this.status = status;
+    this.data = data;
+    this.items = (data && Array.isArray(data.items)) ? data.items : [];
+  }
+}
+
 export async function confirmDiagnosis(encounterId: string, confirmedDiagnosis: string): Promise<{ status: string }> {
   const res = await apiFetch(`${BASE}/encounters/${encounterId}/confirm-diagnosis`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ confirmed_diagnosis: confirmedDiagnosis }),
   });
-  if (!res.ok) throw new Error(`Failed to confirm diagnosis: ${res.status}`);
+  if (!res.ok) {
+    let errBody: any = null;
+    try {
+      errBody = await res.json();
+    } catch (e) {}
+    const detail = errBody?.detail;
+    const msg = typeof detail === 'string' ? detail : detail?.message || `Failed to confirm diagnosis: ${res.status}`;
+    throw new ApiError(msg, res.status, detail);
+  }
   return res.json() as Promise<{ status: string }>;
 }
 
-export async function signNote(encounterId: string, editedSections?: Record<string, string>): Promise<{ status: string }> {
+export async function signNote(
+  encounterId: string,
+  editedSections?: Record<string, string>,
+  statementDeterminations?: Record<string, string>,
+  medicationEntries?: Record<string, string>,
+  acknowledgedFlags?: string[]
+): Promise<{ status: string }> {
+  const body: any = {};
+  if (editedSections) body.edits = editedSections;
+  if (statementDeterminations) body.statement_determinations = statementDeterminations;
+  if (medicationEntries) body.medication_entries = medicationEntries;
+  if (acknowledgedFlags && acknowledgedFlags.length > 0) body.acknowledged_flags = acknowledgedFlags;
+  
   const res = await apiFetch(`${BASE}/encounters/${encounterId}/sign`, {
     method: 'POST',
-    headers: editedSections ? { 'Content-Type': 'application/json' } : undefined,
-    body: editedSections ? JSON.stringify({ edits: editedSections }) : undefined,
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
   });
-  if (!res.ok) throw new Error(`Failed to sign note: ${res.status}`);
+  if (!res.ok) {
+    let errBody: any = null;
+    try {
+      errBody = await res.json();
+    } catch (e) {}
+    const detail = errBody?.detail;
+    const msg = typeof detail === 'string' ? detail : detail?.message || `Failed to sign note: ${res.status}`;
+    throw new ApiError(msg, res.status, detail);
+  }
+  return res.json() as Promise<{ status: string }>;
+}
+
+export async function acknowledgeFlag(encounterId: string, flagId: string): Promise<{ status: string }> {
+  const res = await apiFetch(`${BASE}/encounters/${encounterId}/acknowledge-flag`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ flag_id: flagId }),
+  });
+  if (!res.ok) throw new Error(`Failed to acknowledge flag: ${res.status}`);
   return res.json() as Promise<{ status: string }>;
 }
 
@@ -116,3 +194,32 @@ export async function appendAddendum(encounterId: string, section: string, corre
   if (!res.ok) throw new Error(`Failed to append addendum: ${res.status}`);
   return res.json() as Promise<{ status: string }>;
 }
+
+export async function addStatement(
+  encounterId: string,
+  section: string,
+  text: string
+): Promise<SoapNote> {
+  const res = await apiFetch(`${BASE}/encounters/${encounterId}/statements`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ section, text }),
+  });
+  if (!res.ok) {
+    let errBody: any = null;
+    try {
+      errBody = await res.json();
+    } catch (e) {}
+    let msg = `Failed to add statement: ${res.status}`;
+    if (typeof errBody?.detail === 'string') {
+      msg = errBody.detail;
+    } else if (Array.isArray(errBody?.detail) && errBody.detail.length > 0) {
+      msg = errBody.detail[0]?.msg || msg;
+    } else if (errBody?.detail?.message) {
+      msg = errBody.detail.message;
+    }
+    throw new ApiError(msg, res.status, errBody?.detail);
+  }
+  return res.json() as Promise<SoapNote>;
+}
+

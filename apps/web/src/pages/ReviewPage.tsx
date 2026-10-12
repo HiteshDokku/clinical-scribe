@@ -2,7 +2,7 @@ import { useState, useCallback, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { SoapReviewScreen } from '@/components/review/SoapReviewScreen';
-import { getEncounter, signNote, confirmDiagnosis } from '@/api/encounters';
+import { getEncounter, signNote, confirmDiagnosis, ApiError } from '@/api/encounters';
 import type { ReviewPhase } from '@/hooks/useReviewState';
 
 export function ReviewPage() {
@@ -11,6 +11,8 @@ export function ReviewPage() {
   const [encounterState, setEncounterState] = useState<string>('');
   const [liveNote, setLiveNote] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
+  const [signError, setSignError] = useState<string | null>(null);
+  const [serverErrorItems, setServerErrorItems] = useState<Record<string, string>>({});
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -22,7 +24,6 @@ export function ReviewPage() {
     getEncounter(id)
       .then((data) => {
         if (mounted) {
-          console.log("DEBUG FRONTEND PAYLOAD:", data);
           setLiveNote(data.note);
           setEncounterState(data.state);
           setTranscript(data.transcript || []);
@@ -46,24 +47,48 @@ export function ReviewPage() {
     evidenceMap[segment.id] = segment.text;
   }
 
-  const handleSign = useCallback(async (editedSections: Record<string, string>) => {
+  const handleSign = useCallback(async (
+    editedSections: Record<string, string>,
+    statementDeterminations?: Record<string, string>,
+    medicationEntries?: Record<string, string>,
+    acknowledgedFlags?: string[]
+  ) => {
     if (!id) return;
     setIsSubmitting(true);
+    setSignError(null);
+    setServerErrorItems({});
     try {
       if (encounterState === 'diagnosis_review') {
-        const confirmedText = editedSections.assessment || soapNote?.sections.assessment.statements.map((s: any) => s.text).join('\n') || '';
-        await confirmDiagnosis(id, confirmedText);
+        let confirmedText = editedSections.assessment;
+        if (!confirmedText) {
+          confirmedText = soapNote?.sections.assessment.statements.map((s: any) => {
+            const det = statementDeterminations?.[s.id];
+            return det ? `${s.text} [Clinician Note: ${det}]` : s.text;
+          }).join('\n') || '';
+        }
+        await confirmDiagnosis(id, confirmedText || '');
         // fetch encounter again to get the new state
         const data = await getEncounter(id);
         setLiveNote(data.note);
         setEncounterState(data.state);
       } else {
-        await signNote(id, editedSections);
+        await signNote(id, editedSections, statementDeterminations, medicationEntries, acknowledgedFlags);
         setEncounterState('signed');
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to process:', err);
-      alert('Failed to process request: ' + (err instanceof Error ? err.message : 'Internal Server Error'));
+      // Remove alert() completely per Part 4 rules. Set inline errors.
+      const errMsg = err?.message || 'Failed to process request';
+      setSignError(errMsg);
+      if (err instanceof ApiError && err.items.length > 0) {
+        const itemMap: Record<string, string> = {};
+        for (const it of err.items) {
+          if (it.id) {
+            itemMap[it.id] = it.reason;
+          }
+        }
+        setServerErrorItems(itemMap);
+      }
     } finally {
       setIsSubmitting(false);
     }
@@ -122,13 +147,18 @@ export function ReviewPage() {
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -20 }}
           >
-            <div data-testid="debug-phase" className="text-white">PHASE: {reviewPhase} STATE: {encounterState}</div>
+            {import.meta.env.VITE_DEBUG === 'true' && (
+              <div data-testid="debug-phase" className="text-white">PHASE: {reviewPhase} STATE: {encounterState}</div>
+            )}
             <SoapReviewScreen
               soapNote={soapNote}
               evidenceMap={evidenceMap}
               onSign={handleSign}
+              onNoteUpdated={(newNote) => setLiveNote(newNote)}
               phase={reviewPhase}
               isSubmitting={isSubmitting}
+              serverError={signError}
+              serverErrorItems={serverErrorItems}
             />
           </motion.div>
         ) : (

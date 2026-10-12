@@ -35,20 +35,36 @@ _VALID_PAYLOAD = {
         "name": "llama-3-8b-instruct",
         "quant": "q4_k_m",
         "prompt_version": "v1.0",
+        "digest": "sha256:1234567890abcdef",
     },
     "generated_at": "2026-09-20T12:00:00Z",
     "sections": {
-        "subjective": [
-            {
-                "id": "sub1",
-                "text": "Patient reports a persistent headache for three days.",
-                "evidence": ["transcript:0:15"],
-                "confidence": 0.95,
-            }
-        ],
-        "objective": [],
-        "assessment": [],
-        "plan": [],
+        "subjective": {
+            "statements": [
+                {
+                    "id": "sub1",
+                    "text": "Patient reports a persistent headache for three days.",
+                    "evidence": ["transcript:0:15"],
+                    "confidence": 0.95,
+                }
+            ],
+            "insufficient_content": False,
+            "reason": None,
+        },
+        "objective": {
+            "statements": [],
+            "insufficient_content": True,
+            "reason": "Not discussed in this consultation",
+        },
+        "assessment": {
+            "statements": [],
+            "insufficient_content": True,
+            "reason": "Not discussed in this consultation",
+        },
+        "plan": {
+            "statements": [],
+            "status": "pending",
+        },
     },
     "grounding": {
         "statements_total": 1,
@@ -67,7 +83,7 @@ def test_roundtrip_valid_payload():
     note = SoapNote.model_validate(_VALID_PAYLOAD)
     assert note.encounter_id == "123e4567-e89b-12d3-a456-426614174000"
     assert note.model.name == "llama-3-8b-instruct"
-    assert len(note.sections.subjective.root) == 1
+    assert len(note.sections.subjective.statements.root) == 1
 
     dumped = note.model_dump(mode="json")
     assert dumped["model"]["name"] == "llama-3-8b-instruct"
@@ -76,23 +92,25 @@ def test_roundtrip_valid_payload():
 
 def test_empty_evidence_raises_validation_error():
     """
-    A statement with evidence=[] MUST fail validation.
+    A grounded statement with evidence=[] MUST fail validation.
     This is the schema-level enforcement of "no hallucinated claims" — every
     assertion in a SOAP note must cite at least one transcript span.
     """
     bad_payload = {
         **_VALID_PAYLOAD,
         "sections": {
-            "subjective": [
-                {
-                    "id": "sub1",
-                    "text": "Patient reports a headache.",
-                    "evidence": [],  # <-- violates minItems: 1
-                }
-            ],
-            "objective": [],
-            "assessment": [],
-            "plan": [],
+            **_VALID_PAYLOAD["sections"],
+            "subjective": {
+                "statements": [
+                    {
+                        "id": "sub1",
+                        "text": "Patient reports a headache.",
+                        "evidence": [],  # <-- violates minItems: 1
+                    }
+                ],
+                "insufficient_content": False,
+                "reason": None,
+            },
         },
     }
 
@@ -101,6 +119,38 @@ def test_empty_evidence_raises_validation_error():
 
     # Confirm the error actually mentions 'evidence'
     assert "evidence" in str(exc_info.value).lower()
+
+
+def test_clinician_entered_allows_empty_evidence():
+    """
+    A clinician_entered statement does NOT require evidence.
+    Empty evidence is allowed only for clinician_entered and inferred_diagnosis.
+    """
+    payload = {
+        **_VALID_PAYLOAD,
+        "sections": {
+            **_VALID_PAYLOAD["sections"],
+            "objective": {
+                "statements": [
+                    {
+                        "id": "obj1",
+                        "text": "BP 120/80, temp 37.2 C",
+                        "statement_type": "clinician_entered",
+                        "authored_by": "123e4567-e89b-12d3-a456-426614174001",
+                        "created_at": "2026-10-12T16:00:00Z",
+                        "evidence": [],
+                    }
+                ],
+                "insufficient_content": False,
+                "reason": None,
+            },
+        },
+    }
+    note = SoapNote.model_validate(payload)
+    assert len(note.sections.objective.statements.root) == 1
+    stmt = note.sections.objective.statements.root[0]
+    assert stmt.statement_type.value == "clinician_entered"
+    assert stmt.authored_by == "123e4567-e89b-12d3-a456-426614174001"
 
 
 def test_medication_empty_evidence_raises_validation_error():
@@ -121,3 +171,4 @@ def test_medication_empty_evidence_raises_validation_error():
         SoapNote.model_validate(bad_payload)
 
     assert "evidence" in str(exc_info.value).lower()
+

@@ -2,10 +2,12 @@ from typing import List, Dict, Tuple
 from transformers import AutoTokenizer, AutoModelForSequenceClassification
 import torch
 
+import os
+
 # Load the model offline during startup
-model_name = "cross-encoder/nli-deberta-v3-small"
-tokenizer = AutoTokenizer.from_pretrained(model_name)
-model = AutoModelForSequenceClassification.from_pretrained(model_name)
+model_path = os.getenv("DEBERTA_MODEL_PATH", "/app/models/nli-deberta-v3-small")
+tokenizer = AutoTokenizer.from_pretrained(model_path)
+model = AutoModelForSequenceClassification.from_pretrained(model_path)
 model.eval()
 
 def verify_grounding(statement_text: str, evidence_spans: List[Tuple[int, int]], transcript_segments: List[Dict]) -> bool:

@@ -7,11 +7,12 @@
     "encounter_id": { "type": "string" },
     "model": {
       "type": "object",
-      "required": ["name", "quant", "prompt_version"],
+      "required": ["name", "quant", "prompt_version", "digest"],
       "properties": {
         "name": { "const": "llama-3-8b-instruct" },
         "quant": { "type": "string" },
-        "prompt_version": { "type": "string" }
+        "prompt_version": { "type": "string" },
+        "digest": { "type": "string", "description": "The sha256 digest of the exact model used." }
       }
     },
     "generated_at": { "type": "string", "format": "date-time" },
@@ -110,16 +111,12 @@
     },
     "planSection": {
       "type": "object",
-      "required": ["statements", "insufficient_content"],
+      "required": ["statements", "status"],
       "properties": {
         "statements": { "$ref": "#/$defs/planStatementList" },
-        "insufficient_content": {
-          "type": "boolean",
-          "description": "True when the transcript contains nothing relevant to this section."
-        },
-        "reason": {
-          "type": ["string", "null"],
-          "description": "One-line explanation of why this section has no content."
+        "status": {
+          "enum": ["pending", "generated"],
+          "description": "Status of the plan generation."
         }
       }
     },
@@ -131,14 +128,16 @@
         "properties": {
           "id": { "type": "string" },
           "text": { "type": "string" },
-          "statement_type": { "enum": ["grounded", "inferred_diagnosis"] },
+          "statement_type": { "enum": ["grounded", "inferred_diagnosis", "clinician_entered"] },
           "reasoning_basis": { "type": "string", "minLength": 1 },
           "risk_tier": { "enum": ["common", "requires_review", "red_flag"] },
           "evidence": {
             "type": "array",
             "items": { "type": "string" }
           },
-          "confidence": { "type": "number", "minimum": 0, "maximum": 1 }
+          "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+          "authored_by": { "type": "string" },
+          "created_at": { "type": "string", "format": "date-time" }
         },
         "allOf": [
           {
@@ -148,6 +147,10 @@
           {
             "if": { "properties": { "statement_type": { "const": "inferred_diagnosis" } } },
             "then": { "required": ["reasoning_basis", "risk_tier"] }
+          },
+          {
+            "if": { "properties": { "statement_type": { "const": "clinician_entered" } } },
+            "then": { "required": ["authored_by", "created_at"] }
           }
         ]
       }
@@ -160,13 +163,15 @@
         "properties": {
           "id": { "type": "string" },
           "text": { "type": "string" },
-          "statement_type": { "enum": ["grounded", "inferred_plan"] },
+          "statement_type": { "enum": ["grounded", "inferred_plan", "clinician_entered"] },
           "reasoning_basis": { "type": "string", "minLength": 1 },
           "evidence": {
             "type": "array",
             "items": { "type": "string" }
           },
-          "confidence": { "type": "number", "minimum": 0, "maximum": 1 }
+          "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+          "authored_by": { "type": "string" },
+          "created_at": { "type": "string", "format": "date-time" }
         },
         "allOf": [
           {
@@ -176,6 +181,10 @@
           {
             "if": { "properties": { "statement_type": { "const": "inferred_plan" } } },
             "then": { "required": ["reasoning_basis"], "properties": { "evidence": { "maxItems": 0 } } }
+          },
+          {
+            "if": { "properties": { "statement_type": { "const": "clinician_entered" } } },
+            "then": { "required": ["authored_by", "created_at"] }
           }
         ]
       }
@@ -184,18 +193,27 @@
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["id", "text", "evidence"],
+        "required": ["id", "text"],
         "properties": {
           "id": { "type": "string" },
           "text": { "type": "string" },
+          "statement_type": { "enum": ["grounded", "clinician_entered"] },
           "evidence": {
             "type": "array",
             "items": { "type": "string" },
-            "minItems": 1,
             "description": "Non-empty by design — a statement with no cited transcript span cannot exist. This is the schema-level enforcement of 'no hallucinated claims.'"
           },
-          "confidence": { "type": "number", "minimum": 0, "maximum": 1 }
-        }
+          "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+          "authored_by": { "type": "string" },
+          "created_at": { "type": "string", "format": "date-time" }
+        },
+        "allOf": [
+          {
+            "if": { "properties": { "statement_type": { "const": "clinician_entered" } } },
+            "then": { "required": ["authored_by", "created_at"] },
+            "else": { "required": ["evidence"], "properties": { "evidence": { "minItems": 1 } } }
+          }
+        ]
       }
     },
     "safetyFlag": {

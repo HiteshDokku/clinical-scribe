@@ -59,7 +59,7 @@ class GroundingFailure(Exception):
         )
 
 
-def call_llm(system_prompt: str, response_model: type[BaseModel]) -> dict:
+def call_llm(system_prompt: str, response_model: type[BaseModel]) -> tuple[dict, str, str, str]:
     """Send a structured-output request to the local LLM backend."""
     payload = {
         "model": os.getenv("LLM_MODEL_NAME", "llama3.1:latest"),
@@ -83,13 +83,27 @@ def call_llm(system_prompt: str, response_model: type[BaseModel]) -> dict:
     try:
         if "TRIGGER_OOM" in system_prompt:
             raise ValueError("Simulated OOM for chaos testing")
-        with httpx.Client(timeout=120.0) as client:
+        # Fetch the digest from Ollama tags
+        digest = "unknown"
+        try:
+            tags_url = LLM_BACKEND.replace("/v1/chat/completions", "/api/tags").replace("/chat/completions", "/api/tags")
+            with httpx.Client(timeout=2.0) as t_client:
+                t_resp = t_client.get(tags_url)
+                if t_resp.status_code == 200:
+                    for m in t_resp.json().get("models", []):
+                        if m["name"] == payload["model"]:
+                            digest = m.get("digest", "unknown")
+                            break
+        except Exception:
+            pass
+
+        with httpx.Client(timeout=900.0) as client:
             resp = client.post(LLM_BACKEND, json=payload)
             resp.raise_for_status()
 
             data = resp.json()
             content = data["choices"][0]["message"]["content"]
-            return json.loads(content), payload["model"], os.getenv("LLM_QUANT", "unknown")
+            return json.loads(content), payload["model"], os.getenv("LLM_QUANT", "unknown"), digest
     except Exception as e:
         logger.error("LLM call failed natively: %s", type(e).__name__)
         # Fallback to smaller model on failure
@@ -100,7 +114,7 @@ def call_llm(system_prompt: str, response_model: type[BaseModel]) -> dict:
         if "Simulated OOM" in str(e):
             # For chaos testing, just return a dummy valid response so gateway doesn't 500
             if response_model.__name__ == "ExtractedEntities":
-                return {"entities": []}, fallback_model, "q4_k_m"
+                return {"entities": []}, fallback_model, "q4_k_m", "dummy_digest"
             elif response_model.__name__ == "DiagnoseLLMOutput":
                 dummy_diag = {
                     "sections": {
@@ -109,15 +123,15 @@ def call_llm(system_prompt: str, response_model: type[BaseModel]) -> dict:
                         "assessment": {"statements": [], "insufficient_content": True, "reason": "test"}
                     }
                 }
-                return dummy_diag, fallback_model, "q4_k_m"
+                return dummy_diag, fallback_model, "q4_k_m", "dummy_digest"
                 
         try:
-            with httpx.Client(timeout=120.0) as client:
+            with httpx.Client(timeout=900.0) as client:
                 resp = client.post(fallback_backend, json=payload)
                 resp.raise_for_status()
                 data = resp.json()
                 content = data["choices"][0]["message"]["content"]
-                return json.loads(content), fallback_model, os.getenv("LLM_FALLBACK_QUANT", "q4_k_m")
+                return json.loads(content), fallback_model, os.getenv("LLM_FALLBACK_QUANT", "q4_k_m"), "fallback_digest"
         except Exception as fallback_e:
             raise ValueError(f"LLM backend connection or generation failed (and fallback failed): {fallback_e}") from fallback_e
 
@@ -135,23 +149,19 @@ def validate_grounding(
     ungrounded_ids: list[str] = []
     invalid_ids: list[str] = []
 
-    for section_name in ("subjective", "objective"):
-        section: SoapSection = getattr(soap_output.sections, section_name)
-        for stmt in section.statements.root:
-            bad = [eid for eid in stmt.evidence if eid not in valid_segment_ids]
-            if bad:
-                ungrounded_ids.append(stmt.id)
-                invalid_ids.extend(bad)
-
-    # For assessment, evidence is not strictly required if statement_type == "inferred_diagnosis"
-    if hasattr(soap_output.sections, "assessment"):
-        assessment = soap_output.sections.assessment
-        for stmt in assessment.statements.root:
-            if getattr(stmt.statement_type, "value", stmt.statement_type) == "grounded":
-                bad = [eid for eid in (stmt.evidence or []) if eid not in valid_segment_ids]
-                if bad:
-                    ungrounded_ids.append(stmt.id)
-                    invalid_ids.extend(bad)
+    for section_name in ("subjective", "objective", "assessment", "plan"):
+        if hasattr(soap_output.sections, section_name):
+            section = getattr(soap_output.sections, section_name)
+            if hasattr(section, "statements"):
+                for stmt in section.statements.root:
+                    stmt_type = getattr(stmt, "statement_type", None)
+                    if stmt_type == "clinician_entered" or str(stmt_type).endswith("clinician_entered"):
+                        continue
+                    if getattr(stmt, "evidence", None):
+                        bad = [eid for eid in stmt.evidence if eid not in valid_segment_ids]
+                        if bad:
+                            ungrounded_ids.append(stmt.id)
+                            invalid_ids.extend(bad)
 
     return ungrounded_ids, invalid_ids
 
@@ -166,18 +176,9 @@ def extract_and_diagnose(req: ExtractDiagnoseRequest) -> dict:
 
     valid_segment_ids = {seg.id for seg in req.segments}
     
-    import re
-    def extract_raw_id(raw: str) -> str:
-        return re.sub(r"^seg_[^_]+_", "", raw)
-
-    id_map = {str(i): extract_raw_id(seg.id) for i, seg in enumerate(req.segments)}
-    short_valid_ids = set(id_map.keys())
-
     mapped_segments = []
-    for i, seg in enumerate(req.segments):
-        s_dump = seg.model_dump()
-        s_dump["id"] = str(i)
-        mapped_segments.append(s_dump)
+    for seg in req.segments:
+        mapped_segments.append(seg.model_dump())
         
     # Simulate OOM for entire route if trigger word is present
     if any("TRIGGER_OOM" in s.get("text", "") for s in mapped_segments):
@@ -191,19 +192,35 @@ def extract_and_diagnose(req: ExtractDiagnoseRequest) -> dict:
                     "assessment": {"statements": [], "insufficient_content": True, "reason": "test"}
                 }
             },
-            "id_map": id_map,
+            "id_map": {},
             "ungrounded_ids": [],
             "model": {"name": fallback_model, "quant": "q4_k_m", "prompt_version": "v1"}
         }
 
     extract_template = env.get_template("extract_v1.j2")
     extract_prompt = extract_template.render(segments=mapped_segments)
-    entities_data, _, _ = call_llm(extract_prompt, ExtractedEntities)
+    entities_data, _, _, _ = call_llm(extract_prompt, ExtractedEntities)
     extracted = ExtractedEntities.model_validate(entities_data)
+    
+    if not extracted.entities:
+        return {
+            "entities": [],
+            "diagnosis": {
+                "sections": {
+                    "subjective": {"statements": [], "insufficient_content": True, "reason": "Transcript contains no clinical content"},
+                    "objective": {"statements": [], "insufficient_content": True, "reason": "Transcript contains no clinical content"},
+                    "assessment": {"statements": [], "insufficient_content": True, "reason": "Transcript contains no clinical content"}
+                }
+            },
+            "id_map": {},
+            "ungrounded_ids": [],
+            "model": {"name": "dummy", "quant": "dummy", "prompt_version": "v1", "digest": "dummy"}
+        }
 
     diagnose_template = env.get_template("diagnose_v1.j2")
     diagnose_prompt = diagnose_template.render(
-        entities=[e.model_dump() for e in extracted.entities]
+        entities=[e.model_dump() for e in extracted.entities],
+        segments=mapped_segments
     )
 
     diagnose_output: DiagnoseLLMOutput | None = None
@@ -211,9 +228,9 @@ def extract_and_diagnose(req: ExtractDiagnoseRequest) -> dict:
     last_invalid_ids: list[str] = []
 
     for attempt in range(MAX_GENERATION_ATTEMPTS):
-        soap_data, model_name, model_quant = call_llm(diagnose_prompt, DiagnoseLLMOutput)
+        soap_data, model_name, model_quant, model_digest = call_llm(diagnose_prompt, DiagnoseLLMOutput)
         diagnose_output = DiagnoseLLMOutput.model_validate(soap_data)
-        ungrounded_stmt_ids, last_invalid_ids = validate_grounding(diagnose_output, short_valid_ids)
+        ungrounded_stmt_ids, last_invalid_ids = validate_grounding(diagnose_output, valid_segment_ids)
         if not last_invalid_ids:
             break
 
@@ -221,9 +238,9 @@ def extract_and_diagnose(req: ExtractDiagnoseRequest) -> dict:
     return {
         "entities": [e.model_dump() for e in extracted.entities],
         "diagnosis": diagnose_output.model_dump(),
-        "id_map": id_map,
+        "id_map": {},
         "ungrounded_ids": ungrounded_stmt_ids,
-        "model": {"name": model_name, "quant": model_quant, "prompt_version": "v1"}
+        "model": {"name": model_name, "quant": model_quant, "prompt_version": "v1", "digest": model_digest}
     }
 
 @app.post("/prescribe")
@@ -234,7 +251,7 @@ def prescribe(req: PrescribeRequest) -> dict:
         entities=req.entities
     )
 
-    prescribe_data, _, _ = call_llm(prescribe_prompt, PrescribeLLMOutput)
+    prescribe_data, _, _, _ = call_llm(prescribe_prompt, PrescribeLLMOutput)
     prescribe_output = PrescribeLLMOutput.model_validate(prescribe_data)
     
     return prescribe_output.model_dump()

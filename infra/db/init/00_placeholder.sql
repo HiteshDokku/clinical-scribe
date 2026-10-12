@@ -25,6 +25,12 @@ BEGIN
   END IF;
 END $$;
 
+-- Create the test database for isolated test execution.
+SELECT 'CREATE DATABASE clinical_scribe_test'
+WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'clinical_scribe_test')\gexec
+
 -- Grant connection rights to the app role.
 GRANT CONNECT ON DATABASE clinical_scribe TO scribe_app;
+GRANT CONNECT ON DATABASE clinical_scribe_test TO scribe_app;
 GRANT USAGE ON SCHEMA public TO scribe_app;
+

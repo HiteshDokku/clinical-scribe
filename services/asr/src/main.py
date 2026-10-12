@@ -2,13 +2,17 @@ import asyncio
 import json
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from .ring_buffer import RingBuffer
-from .vad import VADGater
+from .vad import VADGater, get_shared_vad_model
 from .transcriber import Transcriber
+from .speaker_tracker import get_shared_classifier
 
 app = FastAPI(title="asr")
 
 vad_gater = VADGater()
 transcriber = Transcriber()
+# Pre-warm SpeechBrain and Silero models at startup to prevent websocket handshake latency
+get_shared_vad_model()
+get_shared_classifier()
 
 @app.get("/healthz")
 def healthz() -> dict[str, str]:
@@ -40,10 +44,11 @@ async def transcribe_ws(websocket: WebSocket):
             return
 
     from .vad_segmenter import VadSegmenter
-    from .vad_segmenter import VadSegmenter
+    from .speaker_tracker import SpeakerTracker
     import time
     
     vad_segmenter = VadSegmenter()
+    speaker_tracker = SpeakerTracker()
     session_start_time = time.time()
     
     utterance_start_ms = 0
@@ -82,17 +87,23 @@ async def transcribe_ws(websocket: WebSocket):
                         partial_task.cancel()
                     
                     if utterance_end_ms > utterance_start_ms:
-                        # Transcription execution
+                        # Transcription and Diarization execution
                         try:
-                            events = await asyncio.to_thread(
+                            asr_task = asyncio.create_task(asyncio.to_thread(
                                 transcriber.transcribe,
                                 final_audio,
                                 True, # is_final
                                 None, # speaker
                                 0.0   # speaker_confidence
-                            )
+                            ))
+                            diar_task = asyncio.create_task(asyncio.to_thread(
+                                speaker_tracker.assign_speaker, final_audio
+                            ))
+                            events, (raw_speaker, raw_conf) = await asyncio.gather(asr_task, diar_task)
+                            
                             for event in events:
-                                event.speaker = None
+                                event.speaker = raw_speaker
+                                event.speaker_confidence = raw_conf
                                 # Segment start_ms/end_ms must come from actual VAD-detected utterance boundaries
                                 event.start_ms = utterance_start_ms
                                 event.end_ms = utterance_end_ms
@@ -153,10 +164,11 @@ async def transcribe_ws(websocket: WebSocket):
                                     diar_task = asyncio.create_task(asyncio.to_thread(
                                         speaker_tracker.assign_speaker, final_audio
                                     ))
-                                    events, raw_speaker = await asyncio.gather(asr_task, diar_task)
+                                    events, (raw_speaker, raw_conf) = await asyncio.gather(asr_task, diar_task)
                                     
                                     for event in events:
                                         event.speaker = raw_speaker
+                                        event.speaker_confidence = raw_conf
                                         event.start_ms = utterance_start_ms
                                         event.end_ms = utterance_end_ms
                                         

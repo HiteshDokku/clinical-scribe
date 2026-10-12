@@ -1,0 +1,50 @@
+condition_name,severity,assigned_tier
+Spontaneous pneumothorax,2,red_flag
+Cluster headache,3,requires_review
+Boerhaave,2,red_flag
+Spontaneous rib fracture,3,requires_review
+GERD,3,requires_review
+HIV (initial infection),3,requires_review
+Anemia,4,common
+Viral pharyngitis,4,common
+Inguinal hernia,3,requires_review
+Myasthenia gravis,3,requires_review
+Whooping cough,4,common
+Anaphylaxis,1,red_flag
+Epiglottitis,2,red_flag
+Guillain-Barré syndrome,2,red_flag
+Acute laryngitis,4,common
+Croup,2,red_flag
+PSVT,2,red_flag
+Atrial fibrillation,3,requires_review
+Bronchiectasis,3,requires_review
+Allergic sinusitis,4,common
+Chagas,3,requires_review
+Scombroid food poisoning,2,red_flag
+Myocarditis,2,red_flag
+Larygospasm,1,red_flag
+Acute dystonic reactions,2,red_flag
+Localized edema,4,common
+SLE,4,common
+Tuberculosis,3,requires_review
+Unstable angina,2,red_flag
+Stable angina,2,red_flag
+Ebola,1,red_flag
+Acute otitis media,4,common
+Panic attack,5,common
+Bronchospasm / acute asthma exacerbation,3,requires_review
+Bronchitis,4,common
+Acute COPD exacerbation / infection,3,requires_review
+Pulmonary embolism,2,red_flag
+URTI,5,common
+Influenza,3,requires_review
+Pneumonia,3,requires_review
+Acute rhinosinusitis,4,common
+Chronic rhinosinusitis,5,common
+Bronchiolitis,3,requires_review
+Pulmonary neoplasm,3,requires_review
+Possible NSTEMI / STEMI,1,red_flag
+Sarcoidosis,4,common
+Pancreatic neoplasm,3,requires_review
+Acute pulmonary edema,1,red_flag
+Pericarditis,4,common

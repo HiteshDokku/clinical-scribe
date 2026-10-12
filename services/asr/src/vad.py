@@ -2,10 +2,18 @@ import numpy as np
 import torch
 from silero_vad import load_silero_vad
 
+_SHARED_VAD_MODEL = None
+
+def get_shared_vad_model():
+    global _SHARED_VAD_MODEL
+    if _SHARED_VAD_MODEL is None:
+        _SHARED_VAD_MODEL = load_silero_vad()
+    return _SHARED_VAD_MODEL
+
 class VADGater:
-    def __init__(self):
+    def __init__(self, model=None):
         # Using silero-vad >= 5.1
-        self.model = load_silero_vad()
+        self.model = model or get_shared_vad_model()
         
     def is_speech(self, chunk_bytes: bytes, sample_rate: int = 16000, threshold: float = 0.5) -> bool:
         """

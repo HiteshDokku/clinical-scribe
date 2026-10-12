@@ -141,7 +141,19 @@ export function EncounterAuditDetail() {
             <div className="space-y-2">
               {sectionData.statements?.map((stmt: any, i: number) => (
                 <div key={i} className="text-sm text-slate-300 font-sans p-2 border-l-2 border-white/[0.08]">
-                  {stmt.text}
+                  {stmt.statement_type === 'clinician_entered' && (
+                    <div className="flex items-center gap-2 mb-1.5">
+                      <span className="text-[10px] uppercase px-2 py-0.5 rounded-full font-bold bg-clinical-500/20 text-clinical-300 border border-clinical-500/30">
+                        Clinician-entered
+                      </span>
+                      {stmt.authored_by && (
+                        <span className="text-xs text-slate-400 font-mono">
+                          Author: {stmt.authored_by}
+                        </span>
+                      )}
+                    </div>
+                  )}
+                  <p>{stmt.text}</p>
                 </div>
               ))}
               {sectionData.insufficient_content && (
@@ -250,6 +262,41 @@ export function EncounterAuditDetail() {
                           </div>
                         );
                       })}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {auditLogs.some(l => l.action === 'manual_override') && (
+        <div className="mb-6 glass-card-elevated overflow-hidden">
+          <div className="bg-white/[0.03] border-b border-white/[0.08] px-4 py-3 font-bold text-slate-200 font-sans flex justify-between items-center">
+            <span>Manual Overrides & Determination Audit</span>
+          </div>
+          <div className="p-4 space-y-3">
+            {auditLogs.filter(l => l.action === 'manual_override').map((log: any, idx: number) => {
+              const diff = log.diff || {};
+              return (
+                <div key={idx} className="p-3 border border-white/[0.06] rounded-lg bg-white/[0.02] text-sm">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="font-mono text-xs text-slate-400">Recorded by {log.actor}</span>
+                    {diff.matches_ai_draft && (
+                      <span className="px-2 py-0.5 rounded text-xs bg-amber-500/20 text-amber-300 border border-amber-500/30 font-medium">
+                        Matches AI Draft (Score: {diff.ai_similarity_score ?? 1.0})
+                      </span>
+                    )}
+                  </div>
+                  {diff.ai_text && (
+                    <div className="text-xs text-slate-400 mb-1">
+                      <span className="font-semibold text-slate-300">AI Text:</span> {diff.ai_text}
+                    </div>
+                  )}
+                  {diff.clinician_text && (
+                    <div className="text-xs text-slate-200">
+                      <span className="font-semibold text-clinical-300">Clinician Text:</span> {diff.clinician_text}
                     </div>
                   )}
                 </div>

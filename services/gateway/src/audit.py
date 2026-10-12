@@ -16,14 +16,15 @@ def append_audit_log(
     action: str,
     before: dict | None = None,
     after: dict | None = None,
-    field_path: str | None = None
+    field_path: str | None = None,
+    diff: dict | None = None
 ):
     """Writes an immutable audit log row with before/after diffs."""
     before_hash = compute_hash(before)
     after_hash = compute_hash(after)
     
-    diff_jsonb = None
-    if before is not None or after is not None:
+    diff_jsonb = diff
+    if diff_jsonb is None and (before is not None or after is not None):
         diff_jsonb = {"before": before, "after": after}
         
     audit = AuditLog(

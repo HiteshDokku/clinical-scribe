@@ -6,6 +6,7 @@ import { useEncounter } from '@/hooks/useEncounter';
 export function StartPage() {
   const navigate = useNavigate();
   const { isLoading, createEncounter } = useEncounter();
+  const role = localStorage.getItem('demo_role') || 'clinician';
 
   const handleStart = async (clinicianId: string, patientRef: string) => {
     try {
@@ -39,22 +40,41 @@ export function StartPage() {
         </p>
       </motion.div>
 
-      <StartEncounterForm onStart={handleStart} isLoading={isLoading} />
-      
-      <motion.div 
-        initial={{ opacity: 0 }} 
-        animate={{ opacity: 1 }} 
-        transition={{ delay: 0.5 }} 
-        className="mt-12 text-center"
-      >
-        <p className="text-gray-400 text-sm mb-3">Administrative Actions</p>
-        <button 
-          onClick={() => navigate('/audit')} 
-          className="px-6 py-2 border border-clinical-500/30 text-clinical-300 rounded hover:bg-clinical-500/10 transition-colors font-sans font-semibold text-sm"
+      {role === 'admin' ? (
+        <motion.div 
+          initial={{ opacity: 0 }} 
+          animate={{ opacity: 1 }} 
+          className="glass-card-elevated p-12 text-center max-w-md mx-auto"
         >
-          View Audit Dashboard
-        </button>
-      </motion.div>
+          <h2 className="text-2xl font-bold text-white mb-4">Admin Portal</h2>
+          <p className="text-gray-400 mb-8">Access the audit logs and review signed encounters.</p>
+          <button 
+            onClick={() => navigate('/audit')} 
+            className="btn-primary w-full"
+          >
+            Open Audit Dashboard
+          </button>
+        </motion.div>
+      ) : (
+        <>
+          <StartEncounterForm onStart={handleStart} isLoading={isLoading} />
+          
+          <motion.div 
+            initial={{ opacity: 0 }} 
+            animate={{ opacity: 1 }} 
+            transition={{ delay: 0.5 }} 
+            className="mt-12 text-center"
+          >
+            <p className="text-gray-400 text-sm mb-3">Administrative Actions</p>
+            <button 
+              onClick={() => navigate('/audit')} 
+              className="px-6 py-2 border border-clinical-500/30 text-clinical-300 rounded hover:bg-clinical-500/10 transition-colors font-sans font-semibold text-sm"
+            >
+              View Audit Dashboard
+            </button>
+          </motion.div>
+        </>
+      )}
 
     </div>
   );

@@ -58,12 +58,14 @@ export type WsOutboundMessage =
 export interface SoapStatement {
   id: string;
   text: string;
-  /** Empty if inferred */
-  evidence: string[];
+  /** Empty if inferred or clinician_entered */
+  evidence?: string[];
   confidence?: number;
-  statement_type?: 'grounded' | 'inferred_diagnosis' | 'inferred_plan';
+  statement_type?: 'grounded' | 'inferred_diagnosis' | 'inferred_plan' | 'clinician_entered';
   reasoning_basis?: string;
   risk_tier?: 'common' | 'requires_review' | 'red_flag';
+  authored_by?: string;
+  created_at?: string;
 }
 
 /**

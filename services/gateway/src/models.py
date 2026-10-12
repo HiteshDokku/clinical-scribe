@@ -42,6 +42,7 @@ class User(Base):
     
     id = Column(DbUUID, primary_key=True)
     username = Column(String, nullable=False, unique=True)
+    password_hash = Column(String, nullable=False, server_default='legacy')
     role_id = Column(String, ForeignKey('roles.id'), nullable=False)
 
 class Encounter(Base):

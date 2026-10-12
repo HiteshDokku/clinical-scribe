@@ -11,14 +11,13 @@ RUN pip install --no-cache-dir uv
 COPY services/safety/pyproject.toml ./
 RUN uv pip install --system --no-cache -e .[dev]
 
-# Pre-download the HuggingFace NLI model during build to ensure strict offline mode at runtime
-ENV HF_HUB_OFFLINE=0
-RUN python -c "from transformers import AutoTokenizer, AutoModelForSequenceClassification; \
-    AutoTokenizer.from_pretrained('cross-encoder/nli-deberta-v3-small'); \
-    AutoModelForSequenceClassification.from_pretrained('cross-encoder/nli-deberta-v3-small')"
 ENV HF_HUB_OFFLINE=1
+ENV TRANSFORMERS_OFFLINE=1
+
+COPY services/safety/models ./models
 
 COPY services/safety/src ./src
+COPY services/safety/data ./data
 COPY packages ./packages
 
 EXPOSE 8002

@@ -14,6 +14,7 @@ RUN uv pip install --system --no-cache --extra-index-url https://download.pytorc
 RUN uv pip install --system --no-cache -e .
 
 COPY services/asr/src ./src
+COPY services/asr/models ./models
 COPY packages ./packages
 
 RUN uv pip install --system pytest httpx websockets

@@ -59,7 +59,7 @@ async def process_fixture(fixture, gateway_url="http://gateway:8000"):
         "med_f1": 0.0,
         "med_exact_match": 0.0,
         "false_positives": 0,
-        "grounding_rate": 0.0,
+        "unsupported_claim_rate": {"subjective": 0.0, "objective": 0.0, "assessment": 0.0, "plan": 0.0},
         "omission_rate": 0.0,
         "risk_escalation_agreement": 0.0,
         "latency": {},
@@ -209,24 +209,48 @@ async def process_fixture(fixture, gateway_url="http://gateway:8000"):
     results["false_positives"] = fp
     results["med_exact_match"] = 1.0 if (tp == len(gt_tuples) and fp == 0 and len(gt_tuples) > 0) else 0.0
 
-    # Grounding Rate
-    # The prompt asks for unsupported-claim rate per section, omission rate. 
-    # For now, we approximate based on the gt_grounding.
+    # Unsupported-claim rate per section per ADR-0007
+    seg_map = {seg["id"]: seg for seg in segments}
+    for section_name in ["subjective", "objective", "assessment", "plan"]:
+        section = note.get("sections", {}).get(section_name, {})
+        stmts = section.get("statements", [])
+        if not stmts:
+            continue
+            
+        unsupported_count = 0
+        total_count = len(stmts)
+        
+        for stmt in stmts:
+            evidence_spans = []
+            for eid in stmt.get("evidence", []):
+                if eid in seg_map:
+                    s = seg_map[eid]
+                    evidence_spans.append([s["start_ms"], s["end_ms"]])
+            
+            try:
+                # Need to use an HTTP client. We already have http_client
+                res = await http_client.post("http://safety:8002/api/v1/safety/verify_grounding", json={
+                    "statement": stmt["text"],
+                    "evidence_spans": evidence_spans,
+                    "transcript_segments": segments
+                }, timeout=10.0)
+                if res.status_code == 200:
+                    is_grounded = res.json().get("is_grounded", False)
+                    if not is_grounded:
+                        unsupported_count += 1
+                else:
+                    unsupported_count += 1 # If error, consider it unsupported
+            except Exception:
+                unsupported_count += 1
+                
+        results["unsupported_claim_rate"][section_name] = unsupported_count / total_count
+
+    # Omission Rate
     if gt_grounding:
-        # Simplistic matching: just check if the claim text is in the note.
         note_str = json.dumps(note).lower()
         supported_claims = [c for c in gt_grounding if c.get("supported")]
-        unsupported_claims = [c for c in gt_grounding if not c.get("supported")]
-        
         found_supported = sum(1 for c in supported_claims if normalize(c.get("claim")) in note_str)
-        found_unsupported = sum(1 for c in unsupported_claims if normalize(c.get("claim")) in note_str)
-        
-        # Omission rate: supported claims that were missed
         results["omission_rate"] = (len(supported_claims) - found_supported) / len(supported_claims) if supported_claims else 0.0
-        # Grounding rate (inverse of unsupported claim rate in note)
-        # If the note includes an unsupported claim, grounding rate goes down.
-        # This is a simplistic approximation.
-        results["grounding_rate"] = 1.0 - (found_unsupported / max(1, len(unsupported_claims)))
 
     # Risk Tier Escalation Agreement
     assessments = note.get("sections", {}).get("assessment", {}).get("statements", [])
@@ -279,7 +303,7 @@ async def run_harness(dataset_path: str):
         report_md += f"- Med Precision: {r['med_precision']:.4f}, Recall: {r['med_recall']:.4f}, F1: {r['med_f1']:.4f}\n"
         report_md += f"- Med Exact Match Rate: {r['med_exact_match']:.4f}\n"
         report_md += f"- False Positives: {r['false_positives']}\n"
-        report_md += f"- Grounding Rate: {r['grounding_rate']:.4f}\n"
+        report_md += f"- Unsupported Claim Rate: S={r['unsupported_claim_rate']['subjective']:.4f}, O={r['unsupported_claim_rate']['objective']:.4f}, A={r['unsupported_claim_rate']['assessment']:.4f}, P={r['unsupported_claim_rate']['plan']:.4f}\n"
         report_md += f"- Omission Rate: {r['omission_rate']:.4f}\n"
         report_md += f"- Risk Escalation Agreement: {r['risk_escalation_agreement']:.4f}\n"
         report_md += f"- Latency: Drafting Diagnosis {r['latency'].get('drafting_diagnosis', 0.0):.2f}s, Drafting Meds {r['latency'].get('drafting_medications', 0.0):.2f}s\n\n"
@@ -291,9 +315,10 @@ async def run_harness(dataset_path: str):
         f.write(report_md)
         
     with open(f"eval/reports/{date_str}/report.csv", "w") as f:
-        f.write("id,wer,cer,med_precision,med_recall,med_f1,med_exact_match,false_positives,grounding_rate,omission_rate,latency_diag,latency_meds\n")
+        f.write("id,wer,cer,med_precision,med_recall,med_f1,med_exact_match,false_positives,unsup_s,unsup_o,unsup_a,unsup_p,omission_rate,latency_diag,latency_meds\n")
         for r in fixture_results:
-            f.write(f"{r['id']},{r['wer']},{r['cer']},{r['med_precision']},{r['med_recall']},{r['med_f1']},{r['med_exact_match']},{r['false_positives']},{r['grounding_rate']},{r['omission_rate']},{r['latency'].get('drafting_diagnosis', 0)},{r['latency'].get('drafting_medications', 0)}\n")
+            ucr = r['unsupported_claim_rate']
+            f.write(f"{r['id']},{r['wer']},{r['cer']},{r['med_precision']},{r['med_recall']},{r['med_f1']},{r['med_exact_match']},{r['false_positives']},{ucr['subjective']},{ucr['objective']},{ucr['assessment']},{ucr['plan']},{r['omission_rate']},{r['latency'].get('drafting_diagnosis', 0)},{r['latency'].get('drafting_medications', 0)}\n")
 
     print(f"Report generated at eval/reports/{date_str}/")
     

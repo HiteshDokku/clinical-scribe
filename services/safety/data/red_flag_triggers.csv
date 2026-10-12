@@ -1,0 +1,12 @@
+symptom,rationale
+chest pain,PROPOSED — pending clinical review (possible ACS/MI)
+sudden severe headache,PROPOSED — pending clinical review (possible SAH/stroke)
+stroke signs,PROPOSED — pending clinical review (time-sensitive neuro deficit)
+shortness of breath at rest,PROPOSED — pending clinical review (respiratory failure/PE/CHF)
+pregnancy,PROPOSED — pending clinical review (alters safety margins)
+age under 2,PROPOSED — pending clinical review (pediatric vital limits differ)
+suicidal ideation,PROPOSED — pending clinical review (immediate psych emergency)
+self-harm,PROPOSED — pending clinical review (immediate psych emergency)
+loss of consciousness,PROPOSED — pending clinical review (TBI/syncope)
+vomiting blood,PROPOSED — pending clinical review (GI bleed risk)
+throat swelling,PROPOSED — pending clinical review (airway compromise)

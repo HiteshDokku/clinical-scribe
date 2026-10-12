@@ -9,7 +9,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends curl \
 RUN pip install --no-cache-dir uv
 
 COPY services/gateway/pyproject.toml ./
-RUN uv pip install --system --no-cache -e .
+RUN uv pip install --system --no-cache -e .[dev]
 
 COPY services/gateway/src ./src
 COPY packages ./packages
